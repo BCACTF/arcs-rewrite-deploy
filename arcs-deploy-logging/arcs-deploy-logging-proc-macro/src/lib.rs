@@ -18,12 +18,16 @@ fn parse_into_ident(ident: &str) -> Result<Ident, QuoteTokenStream> {
     )
 }
 
-fn parse_into_idents(idents: (&str, &str)) -> Result<(Ident, Ident), QuoteTokenStream> {
-    match (parse_into_ident(idents.0), parse_into_ident(idents.1)) {
-        (Ok(ident_1), Ok(ident_2)) => Ok((ident_1, ident_2)),
-        (Err(e_1), Err(e_2)) => Err(quote!{ #e_1 #e_2 }),
-        (Err(e), Ok(_)) => Err(e),
-        (Ok(_), Err(e)) => Err(e),
+fn parse_into_idents(idents: (&str, &str, &str)) -> Result<(Ident, Ident, Ident), QuoteTokenStream> {
+    match (parse_into_ident(idents.0), parse_into_ident(idents.1), parse_into_ident(idents.2)) {
+        (Ok(ident_1), Ok(ident_2), Ok(ident_3)) => Ok((ident_1, ident_2, ident_3)),
+        (Err(e_1), Err(e_2), Err(e_3)) => Err(quote!{ #e_1 #e_2 #e_3 }),
+        (Err(e_1), Err(e_2), Ok(_)) => Err(quote!{ #e_1 #e_2 }),
+        (Err(e_1), Ok(_), Err(e_3)) => Err(quote!{ #e_1 #e_3 }),
+        (Err(e_1), Ok(_), Ok(_)) => Err(quote!{ #e_1 }),
+        (Ok(_), Err(e_2), Err(e_3)) => Err(quote!{ #e_2 #e_3 }),
+        (Ok(_), Err(e_2), Ok(_)) => Err(quote!{ #e_2 }),
+        (Ok(_), Ok(_), Err(e_3)) => Err(quote!{ #e_3 }),
     }
 }
 
@@ -34,28 +38,28 @@ pub fn with_target(input: TokenStream) -> TokenStream {
     match lit {
         Ok(lit) => {
             let macros = [
-                ("_error", "log_error"),
-                ("_warn", "log_warn"),
-                ("_info", "log_info"),
-                ("_debug", "log_debug"),
-                ("_trace", "log_trace"),
+                ("error", "_error", "log_error"),
+                ("warn", "_warn", "log_warn"),
+                ("info", "_info", "log_info"),
+                ("debug", "_debug", "log_debug"),
+                ("trace", "_trace", "log_trace"),
             ];
             let inner_stream: QuoteTokenStream = macros
                 .into_iter()
                 .map(parse_into_idents)
                 .map(|name| match name {
                     Ok(idents) => {
-                        let (export_name, macro_name) = idents;
+                        let (orig_macro_name, export_name, this_macro_name) = idents;
                         quote! {
-                            macro_rules! #macro_name {
+                            macro_rules! #this_macro_name {
                                 (target: $target:expr, $($arg:tt)+) => {
-                                    arcs_deploy_logging::__internal_redirects::error!(target: $target, $($arg)+)
+                                    arcs_deploy_logging::__internal_redirects::#orig_macro_name!(target: $target, $($arg)+)
                                 };
                                 ($($arg:tt)+) => {
-                                    arcs_deploy_logging::__internal_redirects::error!(target: #lit, $($arg)+)
+                                    arcs_deploy_logging::__internal_redirects::#orig_macro_name!(target: #lit, $($arg)+)
                                 };
                             }
-                            pub(crate) use #macro_name as #export_name;
+                            pub(crate) use #this_macro_name as #export_name;
                         }
                     },
                     Err(err) => err

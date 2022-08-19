@@ -1,6 +1,7 @@
 mod r#macro; // Literal identifier syntax.
 pub mod r#trait;
 
+use lazy_init::Lazy;
 use r#macro::logging_parts;
 use lazy_static::lazy_static;
 
@@ -115,15 +116,16 @@ impl Display for WritableLogLocationTargetMap {
 
 struct FileLogger {
     targets: RwLock<WritableLogLocationTargetMap>,
+    name: Lazy<&'static str>,
 }
 
 impl log::Log for FileLogger {
-    fn enabled(&self, _: &Metadata) -> bool {
-        true
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        Some(&metadata.target()) == self.name.get()
     }
 
     fn log(&self, record: &Record) {
-
+        if !self.enabled(record.metadata()) { return; }
         let target_map = match self.targets.read() {
             Ok(guard) => guard,
             Err(e) => {
@@ -134,17 +136,6 @@ impl log::Log for FileLogger {
 
         let utc: DateTime<Utc> = Utc::now();
         let (level, args) = (record.level(), record.args());
-        if let Some(path) = record.module_path() {
-            let start = if let Some(base_module_end_idx) = path.find("::") {
-                &path[0..base_module_end_idx]
-            } else {
-                path
-            };
-
-            if !start.contains("deploy") {
-                return;
-            }
-        }
 
         for target in target_map.0.get(&record.level()).into_iter().flatten() {
             let log_result = logging_parts!(
@@ -169,11 +160,14 @@ impl log::Log for FileLogger {
 
 lazy_static! {
     static ref LOGGER: FileLogger = FileLogger {
-        targets: RwLock::default()
+        targets: RwLock::default(),
+        name: Lazy::new(),
     };
 }
 
-pub fn set_up_logging(input: &LogLocationTargetMap) -> IOResult<()> {
+pub fn set_up_logging(input: &LogLocationTargetMap, name: &'static str) -> IOResult<()> {
+    LOGGER.name.get_or_create(|| name);
+
     let mut target_hashmap = LOGGER
         .targets
         .write()
@@ -205,7 +199,7 @@ pub fn generate_writable_log_location_target_map(
                                         let mut file = OpenOptions::new().append(true).create(true).open(path)?;
                                         write!(file,
                                             "{:-^50}\n",
-                                            format_args!(
+                                            format!(
                                                 "Logging started at {}",
                                                 time_startup.format("%b %d %H:%M:%S%.3f"),
                                             ),

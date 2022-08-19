@@ -19,20 +19,20 @@ use smallvec::smallvec;
 use deploy::database::database_init;
 use arcs_deploy_logging::{set_up_logging, LogLocationTargetMap};
 
+/// TODO: Use the inner properties so we can remove the `#[allow(unused)]` annotation
+#[allow(unused)]
 #[derive(Debug, Clone)]
 struct AppState {
     db_client: Arc<Client>,
 }
 
 lazy_static! {
-    
-
     static ref ERR_FILE: &'static Path = Path::new("./err.log");
     static ref ERR_WARN_FILE: &'static Path = Path::new("./err_warn.log");
     static ref INFO_DEBUG_FILE: &'static Path = Path::new("./info_debug.log");
 
     
-    static ref DEFAULT_LOGGGING_TARGET: LogLocationTargetMap<'static> = {
+    static ref DEFAULT_LOGGGING_TARGETS: LogLocationTargetMap<'static> = {
         use arcs_deploy_logging::Level::*;
         use arcs_deploy_logging::LogLocationTarget::*;
         vec![
@@ -64,7 +64,7 @@ lazy_static! {
 
 #[actix_web::main]
 async fn main() -> IOResult<()> {
-    set_up_logging(&DEFAULT_LOGGGING_TARGET)?;
+    set_up_logging(&DEFAULT_LOGGGING_TARGETS, deploy::logging::DEFAULT_TARGET_NAME)?;
 
     let postgres_client = database_init().await?;
     let postgres_client_arc = AppState {
