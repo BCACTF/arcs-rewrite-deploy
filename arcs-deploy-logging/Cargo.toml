@@ -1,0 +1,15 @@
+[package]
+name = "arcs-deploy-logging"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+arcs-deploy-logging-proc-macro = { version = "0.1.0", path = "./arcs-deploy-logging-proc-macro" }
+arcs-deploy-shared-structs = { version = "0.1.0", path = "../arcs-deploy-shared-structs" }
+chrono = "0.4.21"
+lazy_static = "1.4.0"
+log = "0.4.17"
+paste = "1.0.8"
+smallvec = "1.9.0"

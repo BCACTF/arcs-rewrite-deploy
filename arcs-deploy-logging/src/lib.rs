@@ -1,0 +1,239 @@
+mod r#macro; // Literal identifier syntax.
+pub mod r#trait;
+
+use r#macro::logging_parts;
+use lazy_static::lazy_static;
+
+use r#trait::WriteImmut;
+
+use arcs_deploy_shared_structs::*;
+use std::collections::HashMap;
+use smallvec::SmallVec;
+
+use log::{LevelFilter, Metadata, Record};
+
+use std::fmt::{Display, Formatter};
+use std::sync::{RwLock, Arc};
+use chrono::{DateTime, Utc};
+
+
+use std::io::{stderr, stdout, ErrorKind, Write};
+use std::fs::{File, OpenOptions};
+use std::path::Path;
+
+
+pub (crate) use std::io::{Error as IOError, Result as IOResult};
+
+#[doc(hidden)]
+pub mod __internal_redirects {
+    pub use log::{trace, debug, info, warn, error};
+}
+pub use log::Level;
+pub use arcs_deploy_logging_proc_macro::with_target;
+
+
+
+
+
+pub type LogLocationTargetMap<'a> = HashMap<Level, SmallVec<[LogLocationTarget<'a>; 6]>>;
+
+#[derive(Debug)]
+pub enum LogLocationTarget<'a> {
+    StdOut,
+    StdErr,
+    File(&'a Path),
+}
+
+#[derive(Clone, Debug)]
+enum WritableLogLocationTarget {
+    StdOut,
+    StdErr,
+    File(Arc<RwLock<File>>),
+}
+
+impl WriteImmut for WritableLogLocationTarget {
+    fn write(&self, buf: &[u8]) -> IOResult<usize> {
+        match self {
+            WritableLogLocationTarget::StdOut => Write::write(&mut stdout(), buf),
+            WritableLogLocationTarget::StdErr => Write::write(&mut stderr(), buf),
+            WritableLogLocationTarget::File(f) => f.write().map_or_else(
+                |err| {
+                    Err(IOError::new(
+                        ErrorKind::Other,
+                        PoisonErrorWrapper::from(err),
+                    ))
+                },
+                |mut file| file.write(buf),
+            ),
+        }
+    }
+    fn write_vectored(&self, bufs: &[std::io::IoSlice<'_>]) -> IOResult<usize> {
+        self.write(
+            bufs.iter()
+                .find(|buf| !buf.is_empty())
+                .map_or(&[][..], |buf| &**buf),
+        )
+    }
+    fn is_write_vectored(&self) -> bool {
+        false
+    }
+
+    fn flush(&self) -> IOResult<()> {
+        match self {
+            WritableLogLocationTarget::StdOut => stdout().flush(),
+            WritableLogLocationTarget::StdErr => stdout().flush(),
+            WritableLogLocationTarget::File(f) => f.write().map_or_else(
+                |err| {
+                    Err(IOError::new(
+                        ErrorKind::Other,
+                        PoisonErrorWrapper::from(err),
+                    ))
+                },
+                |mut file| file.flush(),
+            ),
+        }
+    }
+}
+
+impl Write for WritableLogLocationTarget {
+    fn write(&mut self, buf: &[u8]) -> IOResult<usize> {
+        WriteImmut::write(self, buf)
+    }
+    fn flush(&mut self) -> IOResult<()> {
+        WriteImmut::flush(self)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct WritableLogLocationTargetMap(HashMap<Level, SmallVec<[WritableLogLocationTarget; 6]>>);
+
+impl Display for WritableLogLocationTargetMap {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{:#?}", self))
+    }
+}
+
+struct FileLogger {
+    targets: RwLock<WritableLogLocationTargetMap>,
+}
+
+impl log::Log for FileLogger {
+    fn enabled(&self, _: &Metadata) -> bool {
+        true
+    }
+
+    fn log(&self, record: &Record) {
+
+        let target_map = match self.targets.read() {
+            Ok(guard) => guard,
+            Err(e) => {
+                eprintln!("Logging target poisoned! {}", e);
+                return;
+            }
+        };
+
+        let utc: DateTime<Utc> = Utc::now();
+        let (level, args) = (record.level(), record.args());
+        if let Some(path) = record.module_path() {
+            let start = if let Some(base_module_end_idx) = path.find("::") {
+                &path[0..base_module_end_idx]
+            } else {
+                path
+            };
+
+            if !start.contains("deploy") {
+                return;
+            }
+        }
+
+        for target in target_map.0.get(&record.level()).into_iter().flatten() {
+            let log_result = logging_parts!(
+                target; <==
+                "{} | " - Some(utc.format("%b %d %H:%M:%S%.3f")),
+                "{}; " - record.module_path(),
+                "{}" - record.file()
+                    => ":{}" - record.line()
+                        => * "; ",
+                "{} - " - Some(level),
+                "{}" - Some(args),
+            );
+
+            if let Err(error) = log_result {
+                eprintln!("Failed to log to x! Error: {:?}", error);
+            }
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+lazy_static! {
+    static ref LOGGER: FileLogger = FileLogger {
+        targets: RwLock::default()
+    };
+}
+
+pub fn set_up_logging(input: &LogLocationTargetMap) -> IOResult<()> {
+    let mut target_hashmap = LOGGER
+        .targets
+        .write()
+        .map_err(|error| IOError::new(ErrorKind::Other, PoisonErrorWrapper::from(error)))?;
+
+    *target_hashmap = generate_writable_log_location_target_map(input, Utc::now());
+
+    log::set_logger(&*LOGGER)
+        .map(|()| log::set_max_level(LevelFilter::Trace))
+        .map_err(|error| IOError::new(ErrorKind::Other, ErrorWrapper::from(error)))
+}
+
+pub fn generate_writable_log_location_target_map(
+    from: &LogLocationTargetMap,
+    time_startup: DateTime<Utc>,
+) -> WritableLogLocationTargetMap {
+    let mut file_map = HashMap::new();
+    WritableLogLocationTargetMap(
+        from.iter()
+            .map(|(level, targets)| {
+                (*level, {
+                    targets
+                        .iter()
+                        .map(|target| match target {
+                            LogLocationTarget::File(path) if !file_map.contains_key(path) => {
+                                file_map.insert(
+                                    path,
+                                    Arc::new(RwLock::new({
+                                        let mut file = OpenOptions::new().append(true).create(true).open(path)?;
+                                        write!(file,
+                                            "{:-^50}\n",
+                                            format_args!(
+                                                "Logging started at {}",
+                                                time_startup.format("%b %d %H:%M:%S%.3f"),
+                                            ),
+                                        )?;
+                                        file
+                                    })),
+                                );
+                                Ok(WritableLogLocationTarget::File(
+                                    file_map.get(path).ok_or(IOError::last_os_error())?.clone(),
+                                ))
+                            }
+                            LogLocationTarget::File(path) => Ok(WritableLogLocationTarget::File(
+                                file_map.get(path).ok_or(IOError::last_os_error())?.clone(),
+                            )),
+                            LogLocationTarget::StdOut => Ok(WritableLogLocationTarget::StdOut),
+                            LogLocationTarget::StdErr => Ok(WritableLogLocationTarget::StdErr),
+                        })
+                        .inspect(|error| {
+                            error
+                                .as_ref()
+                                .err()
+                                .iter()
+                                .for_each(|error: &&std::io::Error| eprintln!("{}", error))
+                        })
+                        .filter_map(Result::ok)
+                        .collect()
+                })
+            })
+            .collect(),
+    )
+}
