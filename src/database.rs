@@ -3,7 +3,7 @@ use tokio_postgres::{ NoTls, Client };
 use std::io::{Result as IOResult, Error as IOError, ErrorKind};
 
 #[allow(unused_imports)]
-use crate::logging::{ _trace, _debug, _info, _warn, _error };
+use crate::logging::{ trace, debug, info, warn, error };
 
 
 pub async fn database_init() -> IOResult<Client> {
@@ -11,8 +11,8 @@ pub async fn database_init() -> IOResult<Client> {
     let postgres_ok_result = match postgres_result {
         Ok(postgres_ok_result) => postgres_ok_result,
         Err(err) => {
-            _error!("Error connecting to postgres server!");
-            _info!("Posgres error: {}", err);
+            error!("Error connecting to postgres server!");
+            info!("Posgres error: {}", err);
             return Err(IOError::new(ErrorKind::Other, err))
         }
     };
@@ -20,7 +20,7 @@ pub async fn database_init() -> IOResult<Client> {
 
     tokio::spawn(async move {
         if let Err(e) = connection.await {
-            _error!("Connection error: {}", e);
+            error!("Connection error: {}", e);
         }
     });
 

@@ -38,11 +38,11 @@ pub fn with_target(input: TokenStream) -> TokenStream {
     match lit {
         Ok(lit) => {
             let macros = [
-                ("error", "_error", "log_error"),
-                ("warn", "_warn", "log_warn"),
-                ("info", "_info", "log_info"),
-                ("debug", "_debug", "log_debug"),
-                ("trace", "_trace", "log_trace"),
+                ("error", "error", "log_error"),
+                ("warn", "warn", "log_warn"),
+                ("info", "info", "log_info"),
+                ("debug", "debug", "log_debug"),
+                ("trace", "trace", "log_trace"),
             ];
             let inner_stream: QuoteTokenStream = macros
                 .into_iter()
@@ -68,11 +68,11 @@ pub fn with_target(input: TokenStream) -> TokenStream {
 
             
             let macro_names = [
-                "_error",
-                "_warn",
-                "_info",
-                "_debug",
-                "_trace",
+                "error",
+                "warn",
+                "info",
+                "debug",
+                "trace",
             ];
             let use_stream: QuoteTokenStream = macro_names
                 .into_iter()
