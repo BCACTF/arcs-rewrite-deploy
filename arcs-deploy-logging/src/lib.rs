@@ -9,7 +9,7 @@ use r#trait::WriteImmut;
 
 use arcs_deploy_shared_structs::*;
 use std::collections::HashMap;
-use smallvec::SmallVec;
+use smallvec::{SmallVec, smallvec};
 
 use log::{LevelFilter, Metadata, Record};
 
@@ -230,4 +230,40 @@ pub fn generate_writable_log_location_target_map(
             })
             .collect(),
     )
+}
+
+
+lazy_static! {
+    pub static ref ERR_FILE: &'static Path = Path::new("./err.log");
+    pub static ref ERR_WARN_FILE: &'static Path = Path::new("./err_warn.log");
+    pub static ref INFO_DEBUG_FILE: &'static Path = Path::new("./info_debug.log");
+
+    
+    pub static ref DEFAULT_LOGGGING_TARGETS: LogLocationTargetMap<'static> = {
+        use Level::*;
+        use LogLocationTarget::*;
+        vec![
+            (Trace, smallvec![
+                StdOut,
+            ]),
+            (Debug, smallvec![
+                StdOut,
+                File(&INFO_DEBUG_FILE),
+            ]),
+            (Info, smallvec![
+                StdOut,
+                File(&INFO_DEBUG_FILE),
+            ]),
+            (Warn, smallvec![
+                StdErr,
+                File(&ERR_WARN_FILE),
+            ]),
+            (Error, smallvec![
+                StdErr,
+                File(&ERR_FILE),
+                File(&ERR_WARN_FILE),
+            ]),
+            
+        ].into_iter().collect()
+    };
 }
