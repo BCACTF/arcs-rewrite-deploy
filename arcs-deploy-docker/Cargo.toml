@@ -1,0 +1,18 @@
+[package]
+name = "arcs-deploy-docker"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bollard = "0.13.0"
+serde_yaml = "0.9.9"
+dotenv = "0.15.0"
+dotenv_codegen = "0.15.0"
+hyper = "0.14.20"
+tokio = { version = "1.20.1", features=["full"] }
+arcs-deploy-logging = { version = "0.1.0", path = "../arcs-deploy-logging" }
+tar = "0.4.38"
+futures = "0.3.23"
+smallvec = "1.9.0"

@@ -9,6 +9,7 @@ edition = "2021"
 actix-web = "4"
 arcs-deploy-logging = { version = "0.1.0", path = "arcs-deploy-logging" }
 chrono = "0.4.21"
+arcs-deploy-docker = { version = "0.1.0", path = "arcs-deploy-docker" }
 eager = "0.1.0"
 lazy_static = "1.4.0"
 paste = "1.0.8"
@@ -16,3 +17,6 @@ smallvec = "1.9.0"
 tokio = "1.20.1"
 tokio-postgres = "0.7.6"
 unstringify = "0.1.4"
+arcs-yaml-verifier = { version = "0.1.0", path = "arcs-yaml-verifier" }
+dotenv = "0.15.0"
+arcs-deploy-shared-structs = { version = "0.1.0", path = "arcs-deploy-shared-structs" }
