@@ -3,21 +3,15 @@ use actix_web::{
     web::Data as WebData,
     App, HttpResponse, HttpServer, Responder,
 };
-use lazy_static::lazy_static;
 use tokio_postgres::Client;
 
 use std::{
     io::Result as IOResult,
     sync::Arc,
-    path::Path,
 };
 
-
-use smallvec::smallvec;
-
-
 use deploy::database::database_init;
-use arcs_deploy_logging::{set_up_logging, LogLocationTargetMap};
+use arcs_deploy_logging::set_up_logging;
 
 /// TODO: Use the inner properties so we can remove the `#[allow(unused)]` annotation
 #[allow(unused)]
@@ -26,45 +20,10 @@ struct AppState {
     db_client: Arc<Client>,
 }
 
-lazy_static! {
-    static ref ERR_FILE: &'static Path = Path::new("./err.log");
-    static ref ERR_WARN_FILE: &'static Path = Path::new("./err_warn.log");
-    static ref INFO_DEBUG_FILE: &'static Path = Path::new("./info_debug.log");
-
-    
-    static ref DEFAULT_LOGGGING_TARGETS: LogLocationTargetMap<'static> = {
-        use arcs_deploy_logging::Level::*;
-        use arcs_deploy_logging::LogLocationTarget::*;
-        vec![
-            (Trace, smallvec![
-                StdOut,
-            ]),
-            (Debug, smallvec![
-                StdOut,
-                File(&INFO_DEBUG_FILE),
-            ]),
-            (Info, smallvec![
-                StdOut,
-                File(&INFO_DEBUG_FILE),
-            ]),
-            (Warn, smallvec![
-                StdErr,
-                File(&ERR_WARN_FILE),
-            ]),
-            (Error, smallvec![
-                StdErr,
-                File(&ERR_FILE),
-                File(&ERR_WARN_FILE),
-            ]),
-            
-        ].into_iter().collect()
-    };
-}
-
 
 #[actix_web::main]
 async fn main() -> IOResult<()> {
-    set_up_logging(&DEFAULT_LOGGGING_TARGETS, deploy::logging::DEFAULT_TARGET_NAME)?;
+    set_up_logging(&arcs_deploy_logging::DEFAULT_LOGGGING_TARGETS, deploy::logging::DEFAULT_TARGET_NAME)?;
 
     let postgres_client = database_init().await?;
     let postgres_client_arc = AppState {
