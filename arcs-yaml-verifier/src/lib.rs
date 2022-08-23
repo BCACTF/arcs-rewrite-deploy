@@ -6,11 +6,11 @@ use std::collections::HashSet;
 
 use lazy_static::lazy_static;
 
-
+#[allow(unused)]
 static CATEGORY_DEFAULTS: [&str; 5] = ["misc", "binex", "foren", "crypto", "webex"];
 
 lazy_static! {
-    static CATEGORIES: Box<[&'static str]> = Box::new([]);
+    static ref CATEGORIES: Box<[&'static str]> = Box::new([]);
 }
 
 pub enum Category {
