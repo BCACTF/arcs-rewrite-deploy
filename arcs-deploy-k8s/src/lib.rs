@@ -1,10 +1,16 @@
-use k8s_openapi::{api::{core::v1::{Pod, Service}, apps::v1::Deployment}, serde_json::json};
+use k8s_openapi::{api::{core::v1::{Pod, Service}, apps::v1::Deployment}};
 use kube::{Client, Api, 
-           core::{ObjectList, ObjectMeta},
+           core::{ObjectList},
            api::{ListParams, PostParams, DeleteParams}, Error};
-use kube_runtime::wait::{await_condition, conditions};
-use std::{fs::{self, File}, io::Read};
+// use kube_runtime::wait::{await_condition, conditions};
+use serde::Deserialize;
+use serde_yaml::{Mapping, Value};
+use std::{fs::{ File, read_to_string}, io::Read, path::PathBuf, collections::{BTreeMap, HashMap}};
+// use arcs_deploy_docker::{fetch_chall_folder_names};
+use dotenv::dotenv;
 
+pub mod network_protocol;
+use network_protocol::*;
 
 #[allow(unused_macros)]
 pub mod logging {
@@ -13,6 +19,60 @@ pub mod logging {
 }
 
 use logging::*;
+
+pub fn deserialize_yaml() {
+    let name = "";
+    let chall_folder_path = "";
+    let mut yaml_path = PathBuf::new();
+    yaml_path.push(chall_folder_path);
+    yaml_path.push(name);
+    yaml_path.push("chall.yaml");
+
+    let mut yaml_file = match File::open(&yaml_path) {
+        Ok(file) => file,
+        Err(err) => {
+            error!("Error opening yaml file");
+            info!("Trace: {:?}", err);
+            return;
+        }
+    };
+
+    // TODO - this does not support admin bot challs --> look into that and figure out how to fix
+    let mut yaml_string = String::new();
+    yaml_file.read_to_string(&mut yaml_string).unwrap();
+    let deser: YamlFile = serde_yaml::from_str(&yaml_string).unwrap();
+    let web = deser.deploy.web;
+    let admin = deser.deploy.admin;
+    let nc = deser.deploy.nc;
+
+    let deploy_service_types: Vec<_> = [
+        ("web", web),
+        ("admin", admin),
+        ("nc", nc),
+    ]
+        .into_iter()
+        .map(|(name, data)| data.map(|data| (name, data)))
+        .flatten()
+        .collect();
+
+    deploy_service_types
+        .iter()
+        .for_each(
+            |(name, data)| println!(
+                "{} settings: {} replicas accessible at {}",
+                name,
+                data.replicas,
+                data.expose,
+            )
+        );
+
+}
+
+// pub async fn get_folder_names() -> Result<Vec<String>, String> {
+//     dotenv().ok();
+//     let folder_names = fetch_chall_folder_names()?;
+//     Ok(folder_names)
+// }
 
 pub async fn create_client() -> Client {
     let client = match Client::try_default().await {
@@ -43,36 +103,67 @@ pub async fn get_pods(client : Client) -> Result<ObjectList<Pod>, String> {
     }
 }
 
-pub async fn create_challenge(client : Client, name : &str) -> Result<(), String> {
-    info!("Creating challenge {:?}", name);
+pub async fn create_challenge(client : Client, name_list : Vec<&str>) -> Result<(), String> {
+    for name in name_list {
+        info!("Creating challenge {:?}", name);
     
-    let deployment = match create_deployment(client.clone(), name).await {
-        Ok(deployment) => {
-            deployment
-        }
-        Err(err) => {
-            error!("Error creating deployment");
-            info!("Trace: {:?}", err);
-            return Err(err.to_string());
-        }
-    };
-
-    let service = match create_service(client.clone(), name).await {
-        Ok(service) => service,
-        Err(err) => {
-            error!("Error creating service");
-            info!("Trace: {:?}", err);
-            return Err(err.to_string());
-        }
-    };
-
-    info!("Challenge {:?} successfully created", name);
+        let deployment = match create_deployment(client.clone(), name).await {
+            Ok(deployment) => {
+                deployment
+            }
+            Err(err) => {
+                error!("Error creating deployment");
+                info!("Trace: {:?}", err);
+                return Err(err.to_string());
+            }
+        };
+    
+        let service = match create_service(client.clone(), name).await {
+            Ok(service) => service,
+            Err(err) => {
+                error!("Error creating service");
+                info!("Trace: {:?}", err);
+                return Err(err.to_string());
+            }
+        };
+    
+        info!("Challenge {:?} successfully created", name);
+    }
     Ok(())
 }
 
 async fn create_service(client: Client, name : &str) -> Result<Service, String> {
     let services: Api<Service> = Api::default_namespaced(client.clone());
     let service_name = format!("{}-service", name);
+
+    // TODO --> Look into just moving all the env var stuff into a shared folder for both docker and k8s
+    // let chall_folder_path = match env::var("CHALL_FOLDER") {
+    //     Ok(path) => path,
+    //     Err(err) => {
+    //         error!("Error retrieving CHALL_FOLDER environment variable");
+    //         info!("Trace: {:?}", err);
+    //         return Err(err.to_string());
+    //     }
+    // };
+
+    let chall_folder_path = "/Users/yusuf/documents/code/bcactf3.0/bcactf-3.0/";
+    let mut yaml_path = PathBuf::new();
+    yaml_path.push(chall_folder_path);
+    yaml_path.push(name);
+    yaml_path.push("chall.yaml");
+
+    let yaml_file = match File::open(&yaml_path) {
+        Ok(file) => file,
+        Err(err) => {
+            error!("Error opening yaml file");
+            info!("Trace: {:?}", err);
+            return Err(err.to_string());
+        }
+    };
+
+
+
+
     let data_service = match serde_json::from_value(serde_json::json!({
         "apiVersion": "v1",
         "kind": "Service",
@@ -233,40 +324,43 @@ pub async fn delete_service(client: Client, name : &str) -> Result<(), String> {
     Ok(())
 }
 
-pub async fn delete_challenge(client : Client, name : &str) -> Result<(), String> {
-    info!("Deleting challenge {:?}", name);
+pub async fn delete_challenge(client : Client, name_list : Vec<&str>) -> Result<(), String> {
+    for name in name_list {
+        info!("Deleting challenge {:?}", name);
 
-    let dep_exists = match deploy_exists(client.clone(), name).await {
-        Ok(deploy_exists) => deploy_exists,
-        Err(err) => {
-            error!("Error checking if deployment exists");
-            info!("Trace: {:?}", err);
-            return Err(err.to_string());
-        }
-    };
+        let dep_exists = match deploy_exists(client.clone(), name).await {
+            Ok(deploy_exists) => deploy_exists,
+            Err(err) => {
+                error!("Error checking if deployment exists");
+                info!("Trace: {:?}", err);
+                return Err(err.to_string());
+            }
+        };
+        
+        let serv_exists = match service_exists(client.clone(), name).await {
+            Ok(service_exists) => service_exists,
+            Err(err) => {
+                error!("Error checking if service exists");
+                info!("Trace: {:?}", err);
+                return Err(err.to_string());
+            }
+        };
     
-    let serv_exists = match service_exists(client.clone(), name).await {
-        Ok(service_exists) => service_exists,
-        Err(err) => {
-            error!("Error checking if service exists");
-            info!("Trace: {:?}", err);
-            return Err(err.to_string());
+        if dep_exists {
+            delete_deployment(client.clone(), name).await?;
+        } else {
+            warn!("Skipping...deployment {:?} does not exist", name);
         }
-    };
-
-    if dep_exists {
-        delete_deployment(client.clone(), name).await?;
-    } else {
-        warn!("Skipping...deployment {:?} does not exist", name);
+        
+        if serv_exists {
+            delete_service(client.clone(), name).await?;
+        } else {
+            warn!("Skipping...service {:?} does not exist", format!("{}-service", name));
+        }
+    
+        info!("Successfully deleted challenge {:?}", name);
     }
     
-    if serv_exists {
-        delete_service(client.clone(), name).await?;
-    } else {
-        warn!("Skipping...service {:?} does not exist", format!("{}-service", name));
-    }
-
-    info!("Successfully deleted challenge {:?}", name);
     Ok(())
 }
 

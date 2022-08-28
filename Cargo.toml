@@ -20,3 +20,4 @@ unstringify = "0.1.4"
 arcs-yaml-verifier = { version = "0.1.0", path = "arcs-yaml-verifier" }
 dotenv = "0.15.0"
 arcs-deploy-shared-structs = { version = "0.1.0", path = "arcs-deploy-shared-structs" }
+arcs-deploy-k8s = { version = "0.1.0", path = "arcs-deploy-k8s" }
