@@ -4,3 +4,4 @@
 **/*.env
 .vsls.json
 .DS_Store
+**/tarball_challs

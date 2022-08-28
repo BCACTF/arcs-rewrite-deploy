@@ -16,3 +16,4 @@ arcs-deploy-logging = { version = "0.1.0", path = "../arcs-deploy-logging" }
 tar = "0.4.38"
 futures = "0.3.23"
 smallvec = "1.9.0"
+const_format = "0.2.26"

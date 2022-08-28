@@ -1,32 +1,59 @@
 use smallvec::{smallvec, SmallVec};
 use bollard::models::{ ImageId, BuildInfo, ProgressDetail, ErrorDetail };
+use std::fmt::Display;
+use std::io::Stdout;
 
-pub struct ResultBuffer {
+use const_format::concatcp;
+
+#[derive(Debug)]
+pub struct ResultBuffer<T: std::io::Write = Stdout> {
     stream_output: Option<String>,
     id_list: SmallVec<[String; 1]>,
     progress_string: Option<String>,
     progress_portion: Option<f64>,
+    progress_target: Option<T>,
+
     error_list: SmallVec<[ResultBufferError; 1]>,
 }
 
+#[derive(Debug)]
 pub struct ResultBufferError {
     pub error_text: String,
     pub code: Option<i64>,
     pub detail_message: Option<String>,
 }
 
-impl ResultBuffer {
+const BAR_WIDTH: usize = 20;
+const PROGRESS_FILLED_CHAR: char = '█';
+const PROGRESS_UNFILL_CHAR: char = '-';
+const PROGRESS_BAR_FORMAT_STRING: &str = concatcp!(
+    "|",
+    "{:", PROGRESS_FILLED_CHAR,"^0$}", 
+    "|{:", PROGRESS_FILLED_CHAR,"^0$}", 
+    "|\r",
+);
+
+
+impl<T: std::io::Write> ResultBuffer<T> {
     pub fn new() -> Self {
         Self {
             stream_output: None,
             id_list: smallvec![],
             progress_string: None,
             progress_portion: None,
+            progress_target: None,
             error_list: smallvec![],
         }
     }
 
-    pub fn process_build_info(&mut self, build_info: BuildInfo) -> &mut Self {
+    pub fn with_progress_logging(self, target: T) -> Self {
+        Self {
+            progress_target: Some(target),
+            ..self
+        }
+    }
+
+    pub fn process_build_info(&mut self, build_info: BuildInfo) -> std::io::Result<()> {
         if let Some(id) = build_info.id {
             todo!("implement id handling: {:?}", id);
         }
@@ -48,21 +75,23 @@ impl ResultBuffer {
         }
 
         if let Some(progress_detail) = build_info.progress_detail {
-            self.update_progress_portion(progress_detail);
+            self.update_progress_portion(progress_detail)?;
         }
 
-        self
+        Ok(())
     }
 
     pub fn stream_in(&mut self, new_data: &str) -> &mut Self {
         match self.stream_output.take() {
             Some(mut curr_stream) => {
                 curr_stream.push_str(new_data);
+                self.stream_output = Some(curr_stream);
             },
             None => {
                 self.stream_output = Some(new_data.to_string());
             }
         } 
+        print!("{}", new_data);
         self
     }
 
@@ -94,10 +123,50 @@ impl ResultBuffer {
         self
     }
 
-    pub fn update_progress_portion(&mut self, detail: ProgressDetail) -> &mut Self {
+    pub fn update_progress_portion(&mut self, detail: ProgressDetail) -> std::io::Result<()> {
         if let (Some(current), Some(total)) = (detail.current, detail.total) {
-            self.progress_portion = Some(current as f64 / total as f64);
+            let portion = current as f64 / total as f64;
+            self.progress_portion = Some(portion);
+            if let Some(mut target) = self.progress_target {
+                let progress_idx = (portion * BAR_WIDTH as f64) as usize;
+                // write
+                write!(target, concatcp!(PROGRESS_BAR_FORMAT_STRING), "", progress_idx, "", 20 - progress_idx)?;
+            }
         }
-        self
+        Ok(()) 
+    }
+}
+
+impl<T: std::io::Write> Display for ResultBuffer<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::borrow::Cow::*;
+        if self.error_list.is_empty() {
+            let id_text = if self.id_list.is_empty() {
+                Borrowed("")
+            } else {
+                let mut output = String::from("");
+                output.push_str(&self.id_list[0]);
+                self.id_list.iter().skip(1).for_each(|string| {
+                    output.push_str(", ");
+                    output.push_str(string);
+                });
+                output.push(')');
+                Owned(output)
+            };
+
+            writeln!(f, "Build completed successfully. {}", id_text)?;
+
+            if let Some(stream) = &self.stream_output {
+
+                writeln!(f, "\nStream output:")?;
+                for line in stream.lines() {
+                    writeln!(f, "\t{}", line)?;
+                }
+            }
+
+        } else {
+
+        }
+        Ok(())
     }
 }
