@@ -124,6 +124,22 @@ impl Display for NetworkProtocol {
     }
 }
 
+impl NetworkProtocol {
+    pub fn port(&self) -> u32 {
+        match self {
+            NetworkProtocol::Tcp(port) => *port,
+            NetworkProtocol::Udp(port) => *port,
+        }
+    }
+
+    pub fn protocol(&self) -> &'static str {
+        match self {
+            NetworkProtocol::Tcp(_) => "TCP",
+            NetworkProtocol::Udp(_) => "UDP",
+        }
+    }
+}
+
 fn default_replicas() -> u8 {
     1
 }

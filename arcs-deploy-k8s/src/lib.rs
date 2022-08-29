@@ -20,9 +20,7 @@ pub mod logging {
 
 use logging::*;
 
-pub fn deserialize_yaml() {
-    let name = "";
-    let chall_folder_path = "";
+pub fn fetch_challenge_params(name: &str, chall_folder_path: &str) -> Result<HashMap<&'static str, ChallengeParams>, String> {
     let mut yaml_path = PathBuf::new();
     yaml_path.push(chall_folder_path);
     yaml_path.push(name);
@@ -33,19 +31,34 @@ pub fn deserialize_yaml() {
         Err(err) => {
             error!("Error opening yaml file");
             info!("Trace: {:?}", err);
-            return;
+            return Err(err.to_string());
         }
     };
 
-    // TODO - this does not support admin bot challs --> look into that and figure out how to fix
     let mut yaml_string = String::new();
-    yaml_file.read_to_string(&mut yaml_string).unwrap();
-    let deser: YamlFile = serde_yaml::from_str(&yaml_string).unwrap();
+    match yaml_file.read_to_string(&mut yaml_string) {
+        Err(err) => {
+            error!("Error reading yaml file into buffer");
+            info!("Trace: {:?}", err);
+            return Err(err.to_string());
+        },
+        Ok(_) => ()
+    };
+
+    let deser: YamlFile = match serde_yaml::from_str(&yaml_string) {
+        Ok(deser) => deser,
+        Err(err) => {
+            error!("Error deserializing yaml file");
+            info!("Trace: {:?}", err);
+            return Err(err.to_string());
+        }
+    };
+    
     let web = deser.deploy.web;
     let admin = deser.deploy.admin;
     let nc = deser.deploy.nc;
 
-    let deploy_service_types: Vec<_> = [
+    let deploy_service_types: HashMap<&str, ChallengeParams> = [
         ("web", web),
         ("admin", admin),
         ("nc", nc),
@@ -55,24 +68,9 @@ pub fn deserialize_yaml() {
         .flatten()
         .collect();
 
-    deploy_service_types
-        .iter()
-        .for_each(
-            |(name, data)| println!(
-                "{} settings: {} replicas accessible at {}",
-                name,
-                data.replicas,
-                data.expose,
-            )
-        );
+    Ok(deploy_service_types)
 
 }
-
-// pub async fn get_folder_names() -> Result<Vec<String>, String> {
-//     dotenv().ok();
-//     let folder_names = fetch_chall_folder_names()?;
-//     Ok(folder_names)
-// }
 
 pub async fn create_client() -> Client {
     let client = match Client::try_default().await {
@@ -103,11 +101,12 @@ pub async fn get_pods(client : Client) -> Result<ObjectList<Pod>, String> {
     }
 }
 
-pub async fn create_challenge(client : Client, name_list : Vec<&str>) -> Result<(), String> {
+/// TODO --> Add support for admin bot stuff
+pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_folder_path: &str) -> Result<(), String> {
     for name in name_list {
         info!("Creating challenge {:?}", name);
     
-        let deployment = match create_deployment(client.clone(), name).await {
+        let deployment = match create_deployment(client.clone(), name, chall_folder_path).await {
             Ok(deployment) => {
                 deployment
             }
@@ -118,7 +117,7 @@ pub async fn create_challenge(client : Client, name_list : Vec<&str>) -> Result<
             }
         };
     
-        let service = match create_service(client.clone(), name).await {
+        let service = match create_service(client.clone(), name, chall_folder_path).await {
             Ok(service) => service,
             Err(err) => {
                 error!("Error creating service");
@@ -132,68 +131,32 @@ pub async fn create_challenge(client : Client, name_list : Vec<&str>) -> Result<
     Ok(())
 }
 
-async fn create_service(client: Client, name : &str) -> Result<Service, String> {
+/// TODO --> Add a check to see if there is more than 1 replica, and if so, set up a loadBalancer for that chall instead of a nodePort
+async fn create_service(client: Client, name : &str, chall_folder_path: &str) -> Result<Service, String> {
     let services: Api<Service> = Api::default_namespaced(client.clone());
     let service_name = format!("{}-service", name);
 
-    // TODO --> Look into just moving all the env var stuff into a shared folder for both docker and k8s
-    // let chall_folder_path = match env::var("CHALL_FOLDER") {
-    //     Ok(path) => path,
-    //     Err(err) => {
-    //         error!("Error retrieving CHALL_FOLDER environment variable");
-    //         info!("Trace: {:?}", err);
-    //         return Err(err.to_string());
-    //     }
-    // };
-
-    let chall_folder_path = "/Users/yusuf/documents/code/bcactf3.0/bcactf-3.0/";
-    let mut yaml_path = PathBuf::new();
-    yaml_path.push(chall_folder_path);
-    yaml_path.push(name);
-    yaml_path.push("chall.yaml");
-
-    let yaml_file = match File::open(&yaml_path) {
-        Ok(file) => file,
+    let chall_params = match fetch_challenge_params(name, chall_folder_path) {
+        Ok(chall_params) => chall_params,
         Err(err) => {
-            error!("Error opening yaml file");
+            error!("Error fetching challenge params");
             info!("Trace: {:?}", err);
             return Err(err.to_string());
         }
     };
 
-
-
-
-    let data_service = match serde_json::from_value(serde_json::json!({
-        "apiVersion": "v1",
-        "kind": "Service",
-        "metadata": {
-            "name": service_name,
-            "labels": {
-                "app": service_name
-            }
-        },
-        "spec": {
-            "ports": [
-                {
-                    "port": 80,
-                    "targetPort": 80,
-                    "protocol": "TCP"
-                }
-            ],
-            "selector": {
-                "app": name
-            },
-            "type": "NodePort"
-        }
-    })) {
-        Ok(data_service) => data_service,
-        Err(err) => {
-            error!("Error creating schema for service");
-            info!("Trace: {:?}", err);
-            return Err(err.to_string());
-        }
-    };
+    // TODO --> THIS DOES NOT SUPPORT ADMIN BOTS YET 
+    let data_service : Service;
+    if let Some(params) = chall_params.get("web") {
+        data_service = create_schema_service(name, params).await?;
+    } else if let Some(params) = chall_params.get("nc") {
+        data_service = create_schema_service(name, params).await?;
+    } else if let Some(params) = chall_params.get("admin") {
+        todo!("Admin bots not yet supported");
+    } else {
+        error!("Error creating service schema, check yaml");
+        return Err("Error creating service schema, check yaml".to_string());
+    }
 
     match service_exists(client.clone(), name).await {
         Ok(status) => {
@@ -225,58 +188,65 @@ async fn create_service(client: Client, name : &str) -> Result<Service, String> 
     }
 }
 
-async fn create_deployment(client: Client, name: &str) -> Result<Deployment, String> {
-    let deployments: Api<Deployment> = Api::default_namespaced(client.clone());
-
-    info!("Creating deployment");
-    let data_deploy = match serde_json::from_value(serde_json::json!({
-        "apiVersion": "apps/v1",
-        "kind": "Deployment",
+async fn create_schema_service(name: &str, params: &ChallengeParams) -> Result<Service, String> {
+    let service_name = format!("{}-service", name);
+    match serde_json::from_value(serde_json::json!({
+        "apiVersion": "v1",
+        "kind": "Service",
         "metadata": {
-            "name": name,
+            "name": service_name,
             "labels": {
-                "app": name
+                "app": service_name
             }
         },
         "spec": {
-            "replicas": 1,
+            "ports": [
+                {
+                    "port": params.expose.port(),
+                    "targetPort": params.expose.port(),
+                    "protocol": params.expose.protocol()
+                }
+            ],
             "selector": {
-                "matchLabels": {
-                    "app": name
-                }
+                "app": name
             },
-            "template": {
-                "metadata": {
-                    "labels": {
-                        "app": name
-                    }
-                },
-                "spec": {
-                    "containers": [
-                            {
-                                "name": name,
-                                "image": name,
-                                "imagePullPolicy": "Never",
-                                "ports": [
-                                    {
-                                        "containerPort": 80,
-                                        "protocol": "TCP"
-                                    },
-                                ]
-                            }
-                        ]
-                    }
-                }
-            }
+            "type": "NodePort"
         }
-    )) {
-        Ok(data_deploy) => data_deploy,
+    })) {
+        Ok(data_service) => return Ok(data_service),
         Err(err) => {
-            error!("Error creating deployment schema");
+            error!("Error creating schema for service");
             info!("Trace: {:?}", err);
             return Err(err.to_string());
         }
     };
+}
+
+async fn create_deployment(client: Client, name: &str, chall_folder_path: &str) -> Result<Deployment, String> {
+    let deployments: Api<Deployment> = Api::default_namespaced(client.clone());
+
+    info!("Creating deployment");
+    let chall_params = match fetch_challenge_params(name, chall_folder_path) {
+        Ok(chall_params) => chall_params,
+        Err(err) => {
+            error!("Error fetching challenge params");
+            info!("Trace: {:?}", err);
+            return Err(err.to_string());
+        }
+    };
+
+    let data_deploy: Deployment;
+    if let Some(params) = chall_params.get("web") {
+        data_deploy = create_schema_deployment(name, params)?;
+    } else if let Some(params) = chall_params.get("nc") {
+        data_deploy = create_schema_deployment(name, params)?;
+    } else if let Some(params) = chall_params.get("admin") {
+        todo!("Admin bots not yet supported");
+    } else {
+        error!("Error creating service schema, check yaml");
+        return Err("Error creating service schema, check yaml".to_string());
+    }
+
 
     match deploy_exists(client.clone(), name).await {
         Ok(status) => {
@@ -301,11 +271,65 @@ async fn create_deployment(client: Client, name: &str) -> Result<Deployment, Str
             Ok(deployment_instance)
         }
         Err(err) => {
-            error!("Error creating deployment");
+            error!("Error creating deployment {}", name);
             info!("Trace: {:?}", err);
             Err(err.to_string())
         }
     }
+}
+
+fn create_schema_deployment(name: &str, chall_params: &ChallengeParams) -> Result<Deployment, String>{
+    match serde_json::from_value(serde_json::json!({
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "metadata": {
+            "name": name,
+            "labels": {
+                "app": name
+            }
+        },
+        "spec": {
+            "replicas": chall_params.replicas,
+            "selector": {
+                "matchLabels": {
+                    "app": name
+                }
+            },
+            "template": {
+                "metadata": {
+                    "labels": {
+                        "app": name
+                    }
+                },
+                "spec": {
+                    "containers": [
+                            {
+                                "name": name,
+                                "image": name,
+                                "imagePullPolicy": "Never",
+                                "ports": [
+                                    {
+                                        "containerPort": chall_params.expose.port(),
+                                        "protocol": chall_params.expose.protocol()
+                                    },
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    )) {
+        Ok(data_deploy) => {
+            info!("{:#?}", data_deploy);
+            return Ok(data_deploy);
+        },
+        Err(err) => {
+            error!("Error creating deployment schema");
+            info!("Trace: {:?}", err);
+            return Err(err.to_string());
+        }
+    };
 }
 
 pub async fn delete_deployment(client : Client, name : &str) -> Result<(), String> {
