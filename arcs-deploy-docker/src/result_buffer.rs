@@ -127,11 +127,11 @@ impl<T: std::io::Write> ResultBuffer<T> {
         if let (Some(current), Some(total)) = (detail.current, detail.total) {
             let portion = current as f64 / total as f64;
             self.progress_portion = Some(portion);
-            if let Some(mut target) = self.progress_target {
-                let progress_idx = (portion * BAR_WIDTH as f64) as usize;
-                // write
-                write!(target, concatcp!(PROGRESS_BAR_FORMAT_STRING), "", progress_idx, "", 20 - progress_idx)?;
-            }
+            // if let Some(mut target) = self.progress_target {
+            //     let progress_idx = (portion * BAR_WIDTH as f64) as usize;
+            //     // write
+            //     write!(target, concatcp!(PROGRESS_BAR_FORMAT_STRING), "", progress_idx, "", 20 - progress_idx)?;
+            // }
         }
         Ok(()) 
     }
