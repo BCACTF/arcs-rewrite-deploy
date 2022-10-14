@@ -1,17 +1,18 @@
-use actix_web::{
-    post, put,
-    web::Data as WebData,
-    App, HttpResponse, HttpServer, Responder,
-};
-use tokio_postgres::Client;
+use std::sync::Arc;
+use std::io::Result as IOResult;
 
-use std::{
-    io::Result as IOResult,
-    sync::Arc,
-};
 
-use deploy::database::database_init;
+// Server imports
+use deploy::webhooks::*;
+
+// Logging imports
 use arcs_deploy_logging::set_up_logging;
+
+// Database imports
+use tokio_postgres::Client;
+use deploy::database::database_init;
+
+
 
 /// TODO: Use the inner properties so we can remove the `#[allow(unused)]` annotation
 #[allow(unused)]
@@ -23,6 +24,11 @@ struct AppState {
 
 #[actix_web::main]
 async fn main() -> IOResult<()> {
+    use actix_web::App as ActixApp;
+    use actix_web::web::Data as AppData;
+    use actix_web::HttpServer as ActixHttpServer;
+
+
     set_up_logging(&arcs_deploy_logging::DEFAULT_LOGGGING_TARGETS, deploy::logging::DEFAULT_TARGET_NAME)?;
 
     let postgres_client = database_init().await?;
@@ -30,23 +36,21 @@ async fn main() -> IOResult<()> {
         db_client: Arc::new(postgres_client),
     };
 
-    HttpServer::new(move || {
-        App::new()
-            .app_data(WebData::new(postgres_client_arc.clone()))
-            .service(github_webhook)
-            .service(update_keys)
+    ActixHttpServer::new(move || {
+        ActixApp::new()
+            .app_data(AppData::new(postgres_client_arc.clone()))
+            .service(github::github_webhook)
+            // .service(update_keys)
     })
-    .bind(("127.0.0.1", 8080))?
-    .run()
-    .await
+        .bind(("0.0.0.0", 8085))?
+        .run()
+        .await
 }
 
-#[put("/update_keys")]
-async fn update_keys() -> impl Responder {
-    HttpResponse::Ok().body("")
-}
+// #[put("/update_keys")]
+// async fn update_keys() -> impl ActixResponder {
+//     use actix_web::HttpResponse;
 
-#[post("/github_webhook")]
-async fn github_webhook(req_body: String) -> impl Responder {
-    HttpResponse::Ok().body(req_body)
-}
+//     HttpResponse::Ok().body("")
+// }
+
