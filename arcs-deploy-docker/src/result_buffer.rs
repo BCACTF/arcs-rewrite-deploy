@@ -1,9 +1,9 @@
 use smallvec::{smallvec, SmallVec};
 use bollard::models::{ ImageId, BuildInfo, ProgressDetail, ErrorDetail };
-use std::fmt::Display;
+use std::{fmt::Display, io::stdout};
 use std::io::Stdout;
 
-use const_format::concatcp;
+use const_format::{concatcp, str_repeat};
 
 #[derive(Debug)]
 pub struct ResultBuffer<T: std::io::Write = Stdout> {
@@ -24,14 +24,8 @@ pub struct ResultBufferError {
 }
 
 const BAR_WIDTH: usize = 20;
-const PROGRESS_FILLED_CHAR: char = '█';
-const PROGRESS_UNFILL_CHAR: char = '-';
-const PROGRESS_BAR_FORMAT_STRING: &str = concatcp!(
-    "|",
-    "{:", PROGRESS_FILLED_CHAR,"^0$}", 
-    "|{:", PROGRESS_FILLED_CHAR,"^0$}", 
-    "|\r",
-);
+const PROGRESS_FILLED_STR: &str = str_repeat!("#", BAR_WIDTH);
+const PROGRESS_UNFILL_STR: &str = str_repeat!("-", BAR_WIDTH);
 
 
 impl<T: std::io::Write> ResultBuffer<T> {
@@ -123,15 +117,16 @@ impl<T: std::io::Write> ResultBuffer<T> {
         self
     }
 
+    // TODO: Make this actually write to the correct target.
     pub fn update_progress_portion(&mut self, detail: ProgressDetail) -> std::io::Result<()> {
         if let (Some(current), Some(total)) = (detail.current, detail.total) {
             let portion = current as f64 / total as f64;
             self.progress_portion = Some(portion);
-            // if let Some(mut target) = self.progress_target {
-            //     let progress_idx = (portion * BAR_WIDTH as f64) as usize;
-            //     // write
-            //     write!(target, concatcp!(PROGRESS_BAR_FORMAT_STRING), "", progress_idx, "", 20 - progress_idx)?;
-            // }
+            if let Some(ref mut target) = self.progress_target {
+                let progress_idx = (portion * BAR_WIDTH as f64) as usize;
+                use std::io::Write;
+                write!(stdout(), "|{}{}|\r", &PROGRESS_FILLED_STR[0..progress_idx], &PROGRESS_UNFILL_STR[0..(20 - progress_idx)])?;
+            }
         }
         Ok(()) 
     }
