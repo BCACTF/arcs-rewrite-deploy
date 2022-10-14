@@ -5,3 +5,4 @@
 .vsls.json
 .DS_Store
 **/tarball_challs
+.required_envs_conglomerate
