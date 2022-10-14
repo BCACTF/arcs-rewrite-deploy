@@ -31,9 +31,52 @@ pub mod __internal_redirects {
 }
 pub use log::Level;
 pub use arcs_deploy_logging_proc_macro::with_target;
+use const_format::concatcp;
 
-
-
+macro_rules! color_text_fmt {
+    (bold $color_sequence:literal, $formatting_lit:literal, $text:expr) => {
+        format_args!(
+            "{}{}{}",
+            concatcp!("\x1b[1m", "\x1b[", $color_sequence, "m"),
+            format_args!($formatting_lit, $text),
+            "\x1b[0m",
+        )
+    };
+    ($color_sequence:literal, $formatting_lit:literal, $text:expr) => {
+        format_args!(
+            "{}{}{}",
+            concatcp!("\x1b[", $color_sequence, "m"),
+            format_args!($formatting_lit, $text),
+            "\x1b[0m",
+        )
+    };
+    (option bold $color_sequence:literal, $formatting_lit:literal, $text:expr) => {
+        {
+            let module_path = $text;
+            module_path.and(
+                Some(format_args!(
+                    "{}{}{}",
+                    concatcp!("\x1b[1m", "\x1b[", $color_sequence, "m"),
+                    format!($formatting_lit, $text.unwrap()),
+                    "\x1b[0m",
+                ))
+            )
+        }
+    };
+    (option $color_sequence:literal, $formatting_lit:literal, $text:expr) => {
+        {
+            let module_path = $text;
+            module_path.and(
+                Some(format_args!(
+                    "{}{}{}",
+                    concatcp!("\x1b[", $color_sequence, "m"),
+                    format!($formatting_lit, $text.unwrap()),
+                    "\x1b[0m",
+                ))
+            )
+        }
+    };
+}
 
 
 pub type LogLocationTargetMap<'a> = HashMap<Level, SmallVec<[LogLocationTarget<'a>; 6]>>;
@@ -119,6 +162,44 @@ struct FileLogger {
     name: Lazy<&'static str>,
 }
 
+struct LevelStringStruct {
+    error: String,
+    warn: String,
+    info: String,
+    debug: String,
+    trace: String,
+}
+
+impl LevelStringStruct {
+    fn get_level(&self, level: Level) -> &str {
+        use Level::*;
+
+        match level {
+            Error => &self.error,
+            Warn  => &self.warn,
+            Info  => &self.info,
+            Debug => &self.debug,
+            Trace => &self.trace,
+        }
+    }
+}
+
+impl Default for LevelStringStruct {
+    fn default() -> Self {
+        Self {
+            error: color_text_fmt!(bold "31", "{:<5}", "ERROR").to_string(),
+            warn:  color_text_fmt!(bold "33", "{:<5}", "WARN" ).to_string(),
+            info:  color_text_fmt!(bold "36", "{:<5}", "INFO" ).to_string(),
+            debug: color_text_fmt!(bold "32", "{:<5}", "DEBUG").to_string(),
+            trace: color_text_fmt!(bold "35", "{:<5}", "TRACE").to_string(),
+        }
+    }
+}
+
+lazy_static! {
+    static ref LEVEL_STRINGS: LevelStringStruct = LevelStringStruct::default();
+}
+
 impl log::Log for FileLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         Some(&metadata.target()) == self.name.get()
@@ -140,12 +221,14 @@ impl log::Log for FileLogger {
         for target in target_map.0.get(&record.level()).into_iter().flatten() {
             let log_result = logging_parts!(
                 target; <==
-                "{} | " - Some(utc.format("%b %d %H:%M:%S%.3f")),
-                "{}; " - record.module_path(),
-                "{}" - record.file()
-                    => ":{}" - record.line()
+                "{} "   - Some(color_text_fmt!("38;5;147", "{}", utc.format("%b %d"))),
+                "{}"    - Some(color_text_fmt!("38;5;86", "{}", utc.format("%H:%M:%S"))),
+                "{} | " - Some(color_text_fmt!("38;5;23", "{}", utc.format("%.3f"))),
+                "{} "   - color_text_fmt!(option "38;5;47", "{}", record.module_path()),
+                "{}" - color_text_fmt!(option "38;5;159", "{}", record.file())
+                    => ":{}" - color_text_fmt!(option "38;5;159", "{:<3}", record.line())
                         => * "; ",
-                "{} - " - Some(level),
+                "{} - " - Some(LEVEL_STRINGS.get_level(level)),
                 "{}" - Some(args),
             );
 
@@ -247,7 +330,7 @@ lazy_static! {
                 StdOut,
             ]),
             (Debug, smallvec![
-                StdOut,
+                // StdOut,
                 File(&INFO_DEBUG_FILE),
             ]),
             (Info, smallvec![

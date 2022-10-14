@@ -38,3 +38,10 @@ impl From<SetLoggerError> for ErrorWrapper {
         Self(error)
     }
 }
+
+pub mod shortcuts {
+    pub use std::io::{
+        Error as IOError,
+        Result as IOResult,
+    };
+}

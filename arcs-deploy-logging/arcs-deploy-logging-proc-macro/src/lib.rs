@@ -51,6 +51,7 @@ pub fn with_target(input: TokenStream) -> TokenStream {
                     Ok(idents) => {
                         let (orig_macro_name, export_name, this_macro_name) = idents;
                         quote! {
+                            #[macro_export]
                             macro_rules! #this_macro_name {
                                 (target: $target:expr, $($arg:tt)+) => {
                                     arcs_deploy_logging::__internal_redirects::#orig_macro_name!(target: $target, $($arg)+)
@@ -59,7 +60,7 @@ pub fn with_target(input: TokenStream) -> TokenStream {
                                     arcs_deploy_logging::__internal_redirects::#orig_macro_name!(target: #lit, $($arg)+)
                                 };
                             }
-                            pub(crate) use #this_macro_name as #export_name;
+                            pub use #this_macro_name as #export_name;
                         }
                     },
                     Err(err) => err
@@ -89,7 +90,7 @@ pub fn with_target(input: TokenStream) -> TokenStream {
                     #inner_stream
                 }
 
-                pub(crate) use __internal_logging_macros::{#use_stream};
+                pub use __internal_logging_macros::{#use_stream};
 
                 pub static DEFAULT_TARGET_NAME: &str = #lit;
 
