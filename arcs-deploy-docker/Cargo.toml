@@ -9,6 +9,7 @@ edition = "2021"
 bollard = "0.13.0"
 serde_yaml = "0.9.9"
 dotenv = "0.15.0"
+shiplift = { git = "https://github.com/charlolizard/shiplift", branch = "master" }
 dotenv_codegen = "0.15.0"
 hyper = "0.14.20"
 tokio = { version = "1.20.1", features=["full"] }

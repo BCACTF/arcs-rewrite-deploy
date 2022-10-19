@@ -15,7 +15,7 @@ extern crate dotenv;
 
 #[cfg(unix)]
 
-use arcs_deploy_docker::{logging, build_image, docker_login, fetch_chall_folder_names};
+use arcs_deploy_docker::{logging, build_all_images, build_image, docker_login, fetch_chall_folder_names, push_image, retrieve_containers};
 
 #[tokio::main]
 async fn main() -> IOResult<()> {
@@ -26,14 +26,14 @@ async fn main() -> IOResult<()> {
 
     let docker: Docker = docker_login().await;
 
-    match build_all_images(&docker) {
-        Ok(success) => println!("Successfully created all images."),
-        Err(err) => {
-            eprintln!("Error creating images...");
-            eprintln!("Trace: {}", err);
-        }
-    };
+    let shiplift_docker: shiplift::Docker = shiplift::Docker::new();
+    match docker.version().await {
+        Ok(ver) => println!("version -> {:#?}", ver),
+        Err(e) => eprintln!("Error: {}", e),
+    }
     
+    push_image(shiplift_docker, "real-deal-html").await;
+
     Ok(())
 }
 

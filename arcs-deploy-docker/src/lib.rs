@@ -1,7 +1,8 @@
 use dotenv::dotenv;
+use shiplift::{image::{PushOptions}};
 use std::fs::{self, read_dir};
 use std::env;
-use std::io::Error as IOError;
+use std::io::{Error as IOError, stdout};
 use std::collections::HashSet;
 
 // TODO - UNCOMMENT ONCE FIXED
@@ -10,7 +11,9 @@ use std::collections::HashSet;
 
 use bollard::service::{ContainerSummary, ImageSummary};
 
-use bollard::Docker;
+use bollard::{Docker, API_DEFAULT_VERSION};
+use bollard::auth::DockerCredentials;
+use bollard::image::PushImageOptions;
 use bollard::container::ListContainersOptions;
 use bollard::image::{ListImagesOptions, BuildImageOptions};
 
@@ -21,7 +24,8 @@ use std::io::Read;
 use std::path::{PathBuf};
 use tar::Builder;
 
-use std::io::stdout;
+
+
 
 use futures::stream::StreamExt;
 
@@ -47,6 +51,12 @@ impl From<IOError> for VerifyEnvError {
     }
 }
 
+// this code bad, figure out why docker containers don't show up when you retrieve_containers when connecting with unix defaults
+// also, figure out if you might need to connect with http defaults for the docker object, and if so, how to do that
+// make this code look nicer rn its terrible and seems like half of it is riddled with bugs and issues
+// context issue as well? maybe? idk how to fix it --> reminds me of when i had to switch back and forth between minikube ctx
+// alternate idea --> use two separate packages
+
 pub async fn docker_login() -> Docker {
     #[allow(unused_variables)]
     // look into switching connect_with_local_defaults to connect_with_socket_defaults
@@ -61,11 +71,11 @@ pub async fn docker_login() -> Docker {
             todo!("handle error");
         }
     };
+
     docker
 }
 
 pub async fn retrieve_images(docker: &Docker) -> Result< Vec<ImageSummary>, String > {
-
     let images = match docker.list_images(Some(ListImagesOptions::<String> {
         all: true,
         ..Default::default()
@@ -82,15 +92,17 @@ pub async fn retrieve_images(docker: &Docker) -> Result< Vec<ImageSummary>, Stri
     };
     Ok(images.to_vec())
 }
-
+// todo - error handling
 pub async fn build_image(docker: &Docker, list_chall_names : Vec<&str>){
-    // todo - error handling
+    let registry_url = env::var("DOCKER_REGISTRY_URL").unwrap().to_string();
+    
     for chall_name in list_chall_names{
         info!("Creating image for : {:?}", chall_name);
-        let tar_path = tar_chall(chall_name).await;
+        let chall_tag = format!("{}{}", registry_url, chall_name); 
+        let tar_path = tar_chall(chall_name.clone()).await;
         let options = BuildImageOptions {
             dockerfile: "Dockerfile",
-            t: chall_name,
+            t: &chall_tag,
             rm: true,
             platform: "linux/amd64",
             ..Default::default()
@@ -106,7 +118,6 @@ pub async fn build_image(docker: &Docker, list_chall_names : Vec<&str>){
 
         while let Some(build_info_image_result) = docker_image.next().await {
             match build_info_image_result {
-
                 // TODO - UNCOMMENT THIS ONCE FIXED
                 // Ok(new_info) => result_buffer.process_build_info(new_info),
                 Ok(new_info) => (),
@@ -144,7 +155,7 @@ pub async fn retrieve_containers(docker: &Docker) -> Result < Vec<ContainerSumma
 
 pub async fn tar_chall(chall_name : &str) -> PathBuf {
     // add error handling here
-
+    // TODO --> move this to /tmp/
     let tar_path = {
         let mut tar_path = PathBuf::new();
         tar_path.push(r"./tarball_challs/");
@@ -263,5 +274,25 @@ pub async fn build_all_images(docker : &Docker) -> Result<String, String> {
             return Err(err.to_string());
         }
     };
-    
 }
+
+pub async fn push_image(docker: shiplift::Docker, name: &str) {
+    let registry_username = &env::var("DOCKER_REGISTRY_USERNAME").unwrap();
+    let registry_password = &env::var("DOCKER_REGISTRY_PASSWORD").unwrap();
+    let registry_url = &env::var("DOCKER_REGISTRY_URL").unwrap();
+
+    let auth = shiplift::RegistryAuth::builder()
+        .username(registry_username)
+        .password(registry_password)
+        .server_address(registry_url)
+        .build();
+    let complete_url = format!("{}/{}", registry_url, name);
+    println!("{}", complete_url);
+    let stream = docker.images().push(&complete_url, &PushOptions::builder().auth(auth).build()).await.unwrap();
+    println!("{:?}", stream);
+
+}
+
+// pub async fn pull_image(docker: &Docker, name: &str) {
+    
+// }
