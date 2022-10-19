@@ -2,11 +2,9 @@ use k8s_openapi::{api::{core::v1::{Pod, Service}, apps::v1::Deployment}};
 use kube::{Client, Api, 
            core::{ObjectList},
            api::{ListParams, PostParams, DeleteParams}, Error};
-// use kube_runtime::wait::{await_condition, conditions};
 use serde::Deserialize;
 use serde_yaml::{Mapping, Value};
 use std::{fs::{ File, read_to_string}, io::Read, path::PathBuf, collections::{BTreeMap, HashMap}};
-// use arcs_deploy_docker::{fetch_chall_folder_names};
 use dotenv::dotenv;
 
 pub mod network_protocol;

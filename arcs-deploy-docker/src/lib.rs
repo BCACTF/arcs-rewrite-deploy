@@ -1,31 +1,18 @@
 use dotenv::dotenv;
-use shiplift::{image::{PushOptions}};
+use shiplift::container::ContainerInfo;
 use std::fs::{self, read_dir};
 use std::env;
-use std::io::{Error as IOError, stdout};
+use std::io::{Error as IOError};
 use std::collections::HashSet;
 
 // TODO - UNCOMMENT ONCE FIXED
 // mod result_buffer;
 // pub use result_buffer::ResultBuffer;
 
-use bollard::service::{ContainerSummary, ImageSummary};
-
-use bollard::{Docker, API_DEFAULT_VERSION};
-use bollard::auth::DockerCredentials;
-use bollard::image::PushImageOptions;
-use bollard::container::ListContainersOptions;
-use bollard::image::{ListImagesOptions, BuildImageOptions};
+use shiplift::{Docker, image::{PushOptions, PullOptions, BuildOptions, ImageInfo}};
 
 use std::default::Default;
-
-use std::fs::File;
-use std::io::Read;
 use std::path::{PathBuf};
-use tar::Builder;
-
-
-
 
 use futures::stream::StreamExt;
 
@@ -51,125 +38,78 @@ impl From<IOError> for VerifyEnvError {
     }
 }
 
-// this code bad, figure out why docker containers don't show up when you retrieve_containers when connecting with unix defaults
-// also, figure out if you might need to connect with http defaults for the docker object, and if so, how to do that
-// make this code look nicer rn its terrible and seems like half of it is riddled with bugs and issues
-// context issue as well? maybe? idk how to fix it --> reminds me of when i had to switch back and forth between minikube ctx
-// alternate idea --> use two separate packages
-
 pub async fn docker_login() -> Docker {
-    #[allow(unused_variables)]
-    // look into switching connect_with_local_defaults to connect_with_socket_defaults
-    let docker = match Docker::connect_with_local_defaults() {
-        Ok(docker) => {
-            info!("Successfully connected to Docker Daemon");
-            docker   
-        },
-        Err(err) => {
-            error!("Error connecting to Docker. Ensure daemon is running");
-            info!("Connection Error: {}", err);
-            todo!("handle error");
-        }
-    };
-
+    let docker = Docker::new();
+    match docker.version().await {
+        Ok(ver) => info!("Successfully connected to docker daemon..."),
+        Err(err) => error!("Error: {}", err), 
+    }
     docker
 }
 
-pub async fn retrieve_images(docker: &Docker) -> Result< Vec<ImageSummary>, String > {
-    let images = match docker.list_images(Some(ListImagesOptions::<String> {
-        all: true,
-        ..Default::default()
-    })).await {
+pub async fn retrieve_images(docker: &Docker) -> Result<Vec<ImageInfo>, String> {
+    match docker.images().list(&Default::default()).await {
         Ok(images) => {
-            info!("Docker images successfully fetched");
-            images
-        }, 
-        Err(err) => {
-            error!("Error fetching Docker images");
-            info!("Image Error: {}", err);
-            return Err("".to_owned())
-        }
-    };
-    Ok(images.to_vec())
+            Ok(images)
+        },
+        Err(e) => {
+            error!("Error occurred when retrieving images... {:?}", e);
+            Err(e.to_string())
+        },
+    }
 }
-// todo - error handling
+
 pub async fn build_image(docker: &Docker, list_chall_names : Vec<&str>){
-    let registry_url = env::var("DOCKER_REGISTRY_URL").unwrap().to_string();
-    
     for chall_name in list_chall_names{
+        let challenge_folder = env::var("CHALL_FOLDER").unwrap().to_string();
+        let registry_url = env::var("DOCKER_REGISTRY_URL").unwrap().to_string();
+
+
         info!("Creating image for : {:?}", chall_name);
-        let chall_tag = format!("{}{}", registry_url, chall_name); 
-        let tar_path = tar_chall(chall_name.clone()).await;
-        let options = BuildImageOptions {
-            dockerfile: "Dockerfile",
-            t: &chall_tag,
-            rm: true,
-            platform: "linux/amd64",
-            ..Default::default()
-        };
+        let mut challenge_path = PathBuf::new();
+        challenge_path.push(challenge_folder);
+        challenge_path.push(chall_name);
 
-        let mut chall = File::open(&tar_path).unwrap();
-        let mut contents = Vec::new();
-        chall.read_to_end(&mut contents).unwrap();
+        let mut full_registry_path = PathBuf::new();
+        full_registry_path.push(registry_url);
+        full_registry_path.push(chall_name);
 
-        let mut docker_image = docker.build_image(options, None, Some(contents.into()));
-        
+        let build_options = BuildOptions::builder(challenge_path.to_string_lossy().to_string())
+            .tag(full_registry_path.to_string_lossy())
+            .dockerfile("Dockerfile")
+            .rm(true)
+            .build();
+            
         // let mut result_buffer = <ResultBuffer>::new().with_progress_logging(stdout());
-
-        while let Some(build_info_image_result) = docker_image.next().await {
-            match build_info_image_result {
-                // TODO - UNCOMMENT THIS ONCE FIXED
-                // Ok(new_info) => result_buffer.process_build_info(new_info),
-                Ok(new_info) => (),
-                Err(err) => {
-                    error!("Building docker image failed!");
-                    info!("Docker image build error: {:?}", err);
-                    break;
+        let mut stream = docker.images().build(&build_options);
+        while let Some(build_result) = stream.next().await {
+            match build_result {
+                // Ok(output) => result_buffer.process_build_info(output),
+                Ok(output) => {
+                    info!("{:?}", output);
                 },
-            };
-        };
+                Err(e) => {
+                    error!("Error building docker image");
+                    info!("Docker image build error: {:?}", e);
+                    return;
+                },
+            }
+        }
+        
         info!("{:?} image has been built", chall_name);
     }
-    
 }
 
-pub async fn retrieve_containers(docker: &Docker) -> Result < Vec<ContainerSummary>, String > {
-    #[allow(unused_variables)]
-    let containers = match docker.list_containers(Some(ListContainersOptions::<String> {
-        all: true,
-        ..Default::default()
-
-    })).await {
-        Ok(containers) => {
-            info!("Docker containers successfully fetched");
-            containers
+pub async fn retrieve_containers(docker: &Docker) -> Result < Vec<ContainerInfo>, String > {
+    match docker.containers().list(&Default::default()).await {
+        Ok(info) => {
+            Ok(info)
         },
-        Err(err) => {
-            error!("Error fetching Docker containers");
-            info!("Container Error: {}", err);
-            return Err(err.to_string());
-        }
-    };
-    Ok(containers.to_vec())
-}
-
-pub async fn tar_chall(chall_name : &str) -> PathBuf {
-    // add error handling here
-    // TODO --> move this to /tmp/
-    let tar_path = {
-        let mut tar_path = PathBuf::new();
-        tar_path.push(r"./tarball_challs/");
-        tar_path.push(chall_name);
-        tar_path.set_extension("tar");
-        tar_path
-    };
-
-    let file = File::create(&tar_path).unwrap();
-    let mut tarball_builder = Builder::new(file);
-    let chall_src_path: PathBuf = [&env::var("CHALL_FOLDER").unwrap(), chall_name].into_iter().collect();
-    tarball_builder.append_dir_all(".", &chall_src_path).unwrap();
-    tarball_builder.finish().unwrap();
-    tar_path
+        Err(e) => {
+            error!("Error occurred when retrieving containers... {:?}", e);
+            Err(e.to_string())
+        },
+    }
 }
 
 pub fn verify_env() -> Result<(), VerifyEnvError> {
@@ -198,7 +138,6 @@ pub fn verify_env() -> Result<(), VerifyEnvError> {
         Ok(())
     }
 }
-
 
 // TODO --> add support for admin bot challenges (or challs w multiple dockerfiles) and figure out how to return them/display them (maybe docker-compose?)
 // also probably try and figure out a better way of doing this
@@ -276,7 +215,32 @@ pub async fn build_all_images(docker : &Docker) -> Result<String, String> {
     };
 }
 
-pub async fn push_image(docker: shiplift::Docker, name: &str) {
+pub async fn push_image(docker: &Docker, name: &str) {
+    let registry_username = &env::var("DOCKER_REGISTRY_USERNAME").unwrap();
+    let registry_password = &env::var("DOCKER_REGISTRY_PASSWORD").unwrap();
+    let registry_url = &env::var("DOCKER_REGISTRY_URL").unwrap();
+    let auth = shiplift::RegistryAuth::builder()
+        .username(registry_username)
+        .password(registry_password)
+        .server_address(registry_url)
+        .build();
+    let mut complete_url = PathBuf::new();
+    complete_url.push(registry_url);
+    complete_url.push(name);
+
+    info!("Pushing image: {}", name);
+    let stream = match docker.images().push(&complete_url.to_string_lossy(), &PushOptions::builder().auth(auth).build()).await {
+        Ok(stream) => stream,
+        Err(e) => {
+            error!("Error pushing image");
+            info!("Trace: {:?}", e);
+            return;
+        },
+    };
+    info!("Successfully pushed image: {}", name);
+}
+
+pub async fn pull_image(docker: &Docker, name: &str) {
     let registry_username = &env::var("DOCKER_REGISTRY_USERNAME").unwrap();
     let registry_password = &env::var("DOCKER_REGISTRY_PASSWORD").unwrap();
     let registry_url = &env::var("DOCKER_REGISTRY_URL").unwrap();
@@ -286,13 +250,23 @@ pub async fn push_image(docker: shiplift::Docker, name: &str) {
         .password(registry_password)
         .server_address(registry_url)
         .build();
-    let complete_url = format!("{}/{}", registry_url, name);
-    println!("{}", complete_url);
-    let stream = docker.images().push(&complete_url, &PushOptions::builder().auth(auth).build()).await.unwrap();
-    println!("{:?}", stream);
+    let mut complete_url = PathBuf::new();
+    complete_url.push(registry_url);
+    complete_url.push(name);
 
+    info!("Attempting to pull image: {}", name);
+    let mut stream = docker.images().pull(&PullOptions::builder().auth(auth).image(complete_url.to_string_lossy()).build());
+    while let Some(data) = stream.next().await {
+        let data = match data {
+            // probably want to use a result buffer for this in the future
+            Ok(data) => info!("{:?}", data),
+            Err(e) => {
+                error!("Error pulling image");
+                info!("Trace: {:?}", e);
+                return;
+            },
+        };
+    }
+
+    info!("Successfully pulled image: {}", name);
 }
-
-// pub async fn pull_image(docker: &Docker, name: &str) {
-    
-// }

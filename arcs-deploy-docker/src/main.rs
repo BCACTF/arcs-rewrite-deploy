@@ -1,7 +1,8 @@
 use dotenv::dotenv;
 
-use bollard::Docker;
+// use bollard::Docker;
 
+use shiplift::Docker;
 use arcs_deploy_logging::{set_up_logging, DEFAULT_LOGGGING_TARGETS};
 use arcs_deploy_docker::{ ResultBuffer, VerifyEnvError };
 
@@ -15,7 +16,7 @@ extern crate dotenv;
 
 #[cfg(unix)]
 
-use arcs_deploy_docker::{logging, build_all_images, build_image, docker_login, fetch_chall_folder_names, push_image, retrieve_containers};
+use arcs_deploy_docker::{logging, build_all_images, build_image, docker_login, fetch_chall_folder_names, push_image, pull_image, retrieve_images, retrieve_containers};
 
 #[tokio::main]
 async fn main() -> IOResult<()> {
@@ -25,15 +26,11 @@ async fn main() -> IOResult<()> {
     arcs_deploy_docker::verify_env().map_err(to_io_error)?;
 
     let docker: Docker = docker_login().await;
+    // println!("{:?}", retrieve_images(&docker).await);
+    // build_image(&docker, vec!["real-deal-html"]).await;
+    // push_image(&docker, "real-deal-html").await;
 
-    let shiplift_docker: shiplift::Docker = shiplift::Docker::new();
-    match docker.version().await {
-        Ok(ver) => println!("version -> {:#?}", ver),
-        Err(e) => eprintln!("Error: {}", e),
-    }
-    
-    push_image(shiplift_docker, "real-deal-html").await;
-
+    pull_image(&docker, "real-deal-html").await;
     Ok(())
 }
 
