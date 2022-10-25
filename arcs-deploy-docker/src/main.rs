@@ -27,10 +27,10 @@ async fn main() -> IOResult<()> {
 
     let docker: Docker = docker_login().await;
     // println!("{:?}", retrieve_images(&docker).await);
-    // build_image(&docker, vec!["real-deal-html"]).await;
-    // push_image(&docker, "real-deal-html").await;
+    build_image(&docker, vec!["real-deal-html"]).await;
+    push_image(&docker, "real-deal-html").await;
 
-    pull_image(&docker, "real-deal-html").await;
+    // pull_image(&docker, "real-deal-html").await;
     Ok(())
 }
 

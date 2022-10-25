@@ -1,10 +1,10 @@
-use k8s_openapi::{api::{core::v1::{Pod, Service}, apps::v1::Deployment}};
+use k8s_openapi::{api::{core::v1::{Pod, Service, Secret}, apps::v1::Deployment}};
 use kube::{Client, Api, 
            core::{ObjectList},
-           api::{ListParams, PostParams, DeleteParams}, Error};
+           api::{ListParams, PostParams, DeleteParams}, Error, client};
 use serde::Deserialize;
 use serde_yaml::{Mapping, Value};
-use std::{fs::{ File, read_to_string}, io::Read, path::PathBuf, collections::{BTreeMap, HashMap}};
+use std::{fs::{ File, read_to_string}, io::Read, path::PathBuf, collections::{BTreeMap, HashMap}, env};
 use dotenv::dotenv;
 
 pub mod network_protocol;
@@ -70,19 +70,19 @@ pub fn fetch_challenge_params(name: &str, chall_folder_path: &str) -> Result<Has
 
 }
 
-pub async fn create_client() -> Client {
-    let client = match Client::try_default().await {
+pub async fn create_client() -> Result<Client, String> {
+    match Client::try_default().await {
         Ok(client) => {
             info!("Successfully connected to k8s");
-            client
+            info!("Creating registry secret...");        
+            Ok(client)
         },
         Err(err) => {
             error!("Error creating k8s client");
             info!("Trace: {}", err);
-            todo!("handle this");
+            Err(err.to_string())
         }
-    };
-    client
+    }
 }
 
 pub async fn get_pods(client : Client) -> Result<ObjectList<Pod>, String> {
@@ -175,12 +175,55 @@ async fn create_service(client: Client, name : &str, chall_folder_path: &str) ->
 
     match services.create(&PostParams::default(), &data_service).await {
         Ok(service_instance) => {
-            info!("Service {}-service created", name);
+            info!("Service {} created", service_name);
             Ok(service_instance)
         }
         Err(err) => {
             error!("Error creating service");
             info!("Trace: {:?}", err);
+            Err(err.to_string())
+        }
+    }
+}
+
+// do error handling later 
+pub async fn generate_registry_secret(client: Client) -> Result<Secret, String>{
+    let secrets: Api<Secret> = Api::default_namespaced(client);
+    let registry_username = env::var("DOCKER_REGISTRY_USERNAME").unwrap();
+    let registry_password = env::var("DOCKER_REGISTRY_PASSWORD").unwrap();
+    let registry_url = env::var("DOCKER_REGISTRY_URL").unwrap();
+    let encoded = base64::encode(format!("{}:{}", registry_username, registry_password));
+
+    let dockerconfigdata : String = "{\"auths\":{\"".to_owned() + &registry_url + &"\":{\"username\":\"".to_owned() + &registry_username + "\",\"password\":\"" + &registry_password + "\",\"auth\":\"" + &encoded + "\"}}}";
+    let base_encoded_dockerconfigdata : String = base64::encode(dockerconfigdata);
+
+    let secret : Result<Secret, String> = match serde_json::from_value(serde_json::json!({
+            "apiVersion": "v1",
+            "data": {
+                ".dockerconfigjson": base_encoded_dockerconfigdata
+            },
+            "kind": "Secret",
+            "metadata": {
+                "name": "container-registry-credentials",
+                "namespace": "default"
+            },
+            "type": "kubernetes.io/dockerconfigjson"
+        }
+    )) {
+        Ok(data_deploy) => {
+            Ok(data_deploy)
+        },
+        Err(err) => {
+            info!("{:?}", err);
+            Err(err.to_string())
+        }
+    };
+
+    match secrets.create(&Default::default(), &secret.unwrap()).await {
+        Ok(secret) => {
+            Ok(secret)
+        },
+        Err(err) => {
             Err(err.to_string())
         }
     }
@@ -277,6 +320,13 @@ async fn create_deployment(client: Client, name: &str, chall_folder_path: &str) 
 }
 
 fn create_schema_deployment(name: &str, chall_params: &ChallengeParams) -> Result<Deployment, String>{
+    // check this unwrap for erros
+    let registry_url = &env::var("DOCKER_REGISTRY_URL").unwrap();
+    
+    let mut path_on_registry = PathBuf::new();
+            path_on_registry.push(registry_url);
+            path_on_registry.push(name);
+
     match serde_json::from_value(serde_json::json!({
         "apiVersion": "apps/v1",
         "kind": "Deployment",
@@ -303,14 +353,19 @@ fn create_schema_deployment(name: &str, chall_params: &ChallengeParams) -> Resul
                     "containers": [
                             {
                                 "name": name,
-                                "image": name,
-                                "imagePullPolicy": "Never",
+                                "image": path_on_registry.to_str().unwrap(),
+                                "imagePullPolicy": "Always",
                                 "ports": [
                                     {
                                         "containerPort": chall_params.expose.port(),
                                         "protocol": chall_params.expose.protocol()
                                     },
                                 ]
+                            }
+                        ],
+                    "imagePullSecrets": [
+                            {
+                                "name": "container-registry-credentials"
                             }
                         ]
                     }
