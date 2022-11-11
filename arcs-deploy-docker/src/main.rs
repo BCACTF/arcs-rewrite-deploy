@@ -1,22 +1,15 @@
-use dotenv::dotenv;
-
-// use bollard::Docker;
-
 use shiplift::Docker;
 use arcs_deploy_logging::{set_up_logging, DEFAULT_LOGGGING_TARGETS};
-use arcs_deploy_docker::{ ResultBuffer, VerifyEnvError };
-
+use arcs_deploy_docker::{ VerifyEnvError };
 
 use std::io::{Result as IOResult, Error as IOError};
 
 extern crate dotenv;
-
-// #[allow(unused_imports)]
-// use crate::logging::{ trace, debug, info, warn, error };
+use dotenv::dotenv;
 
 #[cfg(unix)]
 
-use arcs_deploy_docker::{logging, build_all_images, build_image, docker_login, fetch_chall_folder_names, push_image, pull_image, retrieve_images, retrieve_containers};
+use arcs_deploy_docker::{logging, build_image, fetch_chall_folder_names, docker_login, retrieve_images, build_all_images, push_image, pull_image};
 
 #[tokio::main]
 async fn main() -> IOResult<()> {
@@ -25,12 +18,21 @@ async fn main() -> IOResult<()> {
     dotenv().ok();
     arcs_deploy_docker::verify_env().map_err(to_io_error)?;
 
-    let docker: Docker = docker_login().await;
-    // println!("{:?}", retrieve_images(&docker).await);
-    build_image(&docker, vec!["real-deal-html"]).await;
-    push_image(&docker, "real-deal-html").await;
+    let docker: Docker = match docker_login().await {
+        Ok(docker) => docker,
+        Err(e) => return Err(IOError::new(std::io::ErrorKind::Other, e)),
+    };
+    
+    // println!("{:#?}", retrieve_images(&docker).await);
+    // println!("{:?}", fetch_chall_folder_names());
+    // build_all_images(&docker).await.unwrap();
+    // build_image(&docker, vec!["real-deal-html"]).await;
+    // push_image(&docker, "bof-shop").await;
+    match pull_image(&docker, "real-deal-html").await {
+        Err(e) => return  Err(IOError::new(std::io::ErrorKind::Other, e)),
+        _ => (),
+    };
 
-    // pull_image(&docker, "real-deal-html").await;
     Ok(())
 }
 
