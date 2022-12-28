@@ -320,7 +320,7 @@ lazy_static! {
     pub static ref ERR_FILE: &'static Path = Path::new("./err.log");
     pub static ref ERR_WARN_FILE: &'static Path = Path::new("./err_warn.log");
     pub static ref INFO_DEBUG_FILE: &'static Path = Path::new("./info_debug.log");
-
+    pub static ref ALL_LOG_FILE: &'static Path = Path::new("./all.log");
     
     pub static ref DEFAULT_LOGGGING_TARGETS: LogLocationTargetMap<'static> = {
         use Level::*;
@@ -328,25 +328,30 @@ lazy_static! {
         vec![
             (Trace, smallvec![
                 StdOut,
+                File(&ALL_LOG_FILE),
             ]),
             (Debug, smallvec![
                 // StdOut,
                 File(&INFO_DEBUG_FILE),
+                File(&ALL_LOG_FILE),
             ]),
             (Info, smallvec![
                 StdOut,
                 File(&INFO_DEBUG_FILE),
+                File(&ALL_LOG_FILE),
             ]),
             (Warn, smallvec![
                 StdErr,
                 File(&ERR_WARN_FILE),
+                File(&ALL_LOG_FILE),
             ]),
             (Error, smallvec![
                 StdErr,
                 File(&ERR_FILE),
                 File(&ERR_WARN_FILE),
+                File(&ALL_LOG_FILE),
             ]),
-            
+
         ].into_iter().collect()
     };
 }

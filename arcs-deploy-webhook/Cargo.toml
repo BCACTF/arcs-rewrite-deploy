@@ -1,0 +1,15 @@
+[package]
+name = "arcs-deploy-webhook"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+reqwest = "0.11.13"
+warp = "0.3.3"
+tokio = { version="1.20.1", features = ["full"] }
+serde_json = "1.0.91"
+arcs-deploy-logging = { version = "0.1.0", path = "../arcs-deploy-logging" }
+arcs-deploy-docker = { version = "0.1.0", path = "../arcs-deploy-docker" }
+arcs-deploy-k8s = { version = "0.1.0", path = "../arcs-deploy-k8s" }

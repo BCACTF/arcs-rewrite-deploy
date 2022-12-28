@@ -28,6 +28,7 @@ guard = "0.5.1"
 sha2 = "0.10.6"
 hmac = "0.12.1"
 hex = "0.4.3"
+arcs-deploy-webhook = { version = "0.1.0", path = "arcs-deploy-webhook" } 
 
 [build-dependencies]
 walkdir = "2.3.2"
