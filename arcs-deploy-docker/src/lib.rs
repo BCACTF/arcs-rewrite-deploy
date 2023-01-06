@@ -54,7 +54,7 @@ pub async fn docker_login() -> Result<Docker, String> {
     
 }
 
-/// Retrieves all Docker images on the system. Returns a result type with vector of ImageInfo structs.
+/// Retrieves all Docker images on the system
 pub async fn retrieve_images(docker: &Docker) -> Result<Vec<ImageInfo>, String> {
     match docker.images().list(&Default::default()).await {
         Ok(images) => {
@@ -68,9 +68,7 @@ pub async fn retrieve_images(docker: &Docker) -> Result<Vec<ImageInfo>, String> 
 }
 
 /// Builds a Docker image from the Dockerfile contained in the folder with **challname** (assumes Dockerfile is in the root of the challenge folder provided).
-/// 
 /// Takes in a Vec<&str> of challenge names to support building multiple images via one call.
-/// 
 /// If a challenge already exists, Docker deals with rebuilding and whatnot.
 pub async fn build_image(docker: &Docker, list_chall_names : Vec<&str>) -> Result<(), String> {
     let challenge_folder = &get_env("CHALL_FOLDER")?;
@@ -269,7 +267,6 @@ pub async fn build_all_images(docker : &Docker) -> Result<String, String> {
 /// Important Note: Does not accurately throw errors/warn if something happens when pushing containers.
 // TODO --> Write own push function that impl stream to accurately return errors
 pub async fn push_image(docker: &Docker, name: &str) -> Result<(), String> {
-    // may want to create a function that handles env vars to clean up code
     let registry_username = &get_env("DOCKER_REGISTRY_USERNAME")?;
     let registry_password = &get_env("DOCKER_REGISTRY_PASSWORD")?;
     let registry_url = &get_env("DOCKER_REGISTRY_URL")?;
@@ -357,8 +354,7 @@ pub async fn pull_image(docker: &Docker, name: &str) -> Result<(), String>{
 }
 
 /// Helper function to just simplify and clean up environment var fetching
-/// 
-/// May want to create custom error types for this to improve error handling, not a big deal currently
+/// May want to create custom error types for this to improve error handling
 fn get_env(env_name: &str) -> Result<String, String> {
     match env::var(env_name) {
         Ok(val) => Ok(val.to_string()),
