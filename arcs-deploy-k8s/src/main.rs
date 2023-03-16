@@ -28,7 +28,7 @@ async fn main() -> IOResult<()>{
 
     // delete_challenge(client.clone(), vec!["real-deal-html"]).await.unwrap();
     // create_challenge(client.clone(), vec!["bof-shop"], "/Users/yusuf/Documents/code/arcs/arcs-rewrite/testdockerdirectory").await;
-    create_challenge(client.clone(), vec!["agent-rocket"], "/Users/yusuf/Documents/code/arcs/arcs-rewrite/testdockerdirectory").await;
+    // create_challenge(client.clone(), vec!["real-deal-html"], "/Users/yusuf/Documents/code/arcs/arcs-rewrite/testdockerdirectory").await;
     // generate_registry_secret(client.clone()).await;
 
     Ok(())

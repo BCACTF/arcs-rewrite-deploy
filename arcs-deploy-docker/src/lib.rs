@@ -1,6 +1,6 @@
 use dotenv::dotenv;
 use shiplift::container::ContainerInfo;
-use shiplift::image::{ImageBuildChunk};
+use shiplift::image::ImageBuildChunk;
 use std::borrow::Borrow;
 use std::fs::{self, read_dir};
 use std::env;
@@ -20,9 +20,6 @@ pub mod logging {
 }
 
 use logging::*;
-
-pub mod result_buffer;
-pub use result_buffer::ResultBuffer;
 
 pub enum VerifyEnvError {
     VerifyFailed(Vec<String>),
@@ -44,14 +41,13 @@ pub async fn docker_login() -> Result<Docker, String> {
         },
         Err(err) => {
             error!("{}", err);
-            if err.to_string().contains("error trying to connect: No such file or directory") {
+            if err.to_string().contains("error trying to connect") {
                 warn!("Ensure Docker is running");
             }
             
             Err(err.to_string())
         }, 
     }
-    
 }
 
 /// Retrieves all Docker images on the system
@@ -67,6 +63,19 @@ pub async fn retrieve_images(docker: &Docker) -> Result<Vec<ImageInfo>, String> 
     }
 }
 
+/// Retrieve all Docker containers on the system
+pub async fn retrieve_containers(docker: &Docker) -> Result <Vec<ContainerInfo>, String> {
+    match docker.containers().list(&Default::default()).await {
+        Ok(containers) => {
+            Ok(containers)
+        },
+        Err(e) => {
+            error!("Error occurred when retrieving containers... {:?}", e);
+            Err(e.to_string())
+        },
+    }
+}
+
 /// Builds a Docker image from the Dockerfile contained in the folder with **challname** (assumes Dockerfile is in the root of the challenge folder provided).
 /// Takes in a Vec<&str> of challenge names to support building multiple images via one call.
 /// If a challenge already exists, Docker deals with rebuilding and whatnot.
@@ -74,14 +83,14 @@ pub async fn build_image(docker: &Docker, list_chall_names : Vec<&str>) -> Resul
     let challenge_folder = &get_env("CHALL_FOLDER")?;
     let registry_url = &get_env("DOCKER_REGISTRY_URL")?;
 
+    let path_to_registry = PathBuf::from(registry_url);
+
     'chall_to_build: for chall_name in list_chall_names{
         info!("Creating image for: {:?}", chall_name);
-        let mut challenge_path = PathBuf::new();
-        challenge_path.push(challenge_folder);
+        let mut challenge_path = PathBuf::from(challenge_folder);
+        let mut full_registry_path = path_to_registry.clone();
+        
         challenge_path.push(chall_name);
-
-        let mut full_registry_path = PathBuf::new();
-        full_registry_path.push(registry_url);
         full_registry_path.push(chall_name);
 
         let build_options = BuildOptions::builder(challenge_path.to_string_lossy().to_string())
@@ -93,7 +102,6 @@ pub async fn build_image(docker: &Docker, list_chall_names : Vec<&str>) -> Resul
         let mut stream = docker.images().build(&build_options);
         while let Some(build_result) = stream.next().await {
             match build_result {
-                // TODO -> Probably want to use resultbuffer for this
                 Ok(output) => {
                     match output.borrow() {
                         ImageBuildChunk::Update {stream} => {
@@ -129,18 +137,6 @@ pub async fn build_image(docker: &Docker, list_chall_names : Vec<&str>) -> Resul
     Ok(())
 }
 
-pub async fn retrieve_containers(docker: &Docker) -> Result < Vec<ContainerInfo>, String > {
-    match docker.containers().list(&Default::default()).await {
-        Ok(containers) => {
-            Ok(containers)
-        },
-        Err(e) => {
-            error!("Error occurred when retrieving containers... {:?}", e);
-            Err(e.to_string())
-        },
-    }
-}
-
 pub fn verify_env() -> Result<(), VerifyEnvError> {
     use logging::*;
 
@@ -172,27 +168,22 @@ pub fn verify_env() -> Result<(), VerifyEnvError> {
 // also probably try and figure out a better way of doing this
 /// Fetches the name of all folders in the provided **CHALL_FOLDER** env var that contain a Dockerfile in the root of the folder (will be expanded in the future to check recursively for child folders)
 pub fn fetch_chall_folder_names() -> Result<Vec<String>, String> {
-    let challenge_folder = &get_env("CHALL_FOLDER")?;
-    
-    let mut local_repo_path = PathBuf::new();
-    local_repo_path.push(challenge_folder);
+    let local_repo_path = PathBuf::from( &get_env("CHALL_FOLDER")? );
 
     let mut chall_names : Vec<String> = Vec::new();
     match read_dir(&local_repo_path) {
         Ok(local_repo) => {
             for entry in local_repo {
-                let entry = match entry {
-                    Ok(entry) => entry,
+                let path = match entry {
+                    Ok(entry) => entry.path(),
                     Err(err) => {
                         error!("Error reading directory");
                         debug!("Trace: {}", err);
                         return Err("Error reading directory".to_owned());
                     }
                 };
-                
-                let path = entry.path();
 
-                if path.is_dir()  {
+                if path.is_dir() {
                     let container_chall_folder = match path.read_dir() {
                         Ok(container_chall_folder) => container_chall_folder,
                         Err(err) => {
@@ -219,7 +210,8 @@ pub fn fetch_chall_folder_names() -> Result<Vec<String>, String> {
                             let chall_name = match path.file_name() {
                                 None => {
                                     error!("Error reading challenge name");
-                                    debug!("Reading folder name returned None...Ensure pathnames do not end in '/' or '..'");
+                                    warn!("Ensure pathnames do not end in '/' or '..'");
+                                    debug!("Reading folder name returned None.");
                                     return Err("Error reading challenge name".to_owned());
                                 },
                                 Some(name) => {
@@ -265,7 +257,7 @@ pub async fn build_all_images(docker : &Docker) -> Result<String, String> {
 /// Pushes image to remote registry specified by **DOCKER_REGISTRY_URL** env var
 /// 
 /// Important Note: Does not accurately throw errors/warn if something happens when pushing containers.
-// TODO --> Write own push function that impl stream to accurately return errors
+/// TODO --> Write own push function that impl stream to accurately return errors
 pub async fn push_image(docker: &Docker, name: &str) -> Result<(), String> {
     let registry_username = &get_env("DOCKER_REGISTRY_USERNAME")?;
     let registry_password = &get_env("DOCKER_REGISTRY_PASSWORD")?;
@@ -277,13 +269,13 @@ pub async fn push_image(docker: &Docker, name: &str) -> Result<(), String> {
         .server_address(registry_url.clone())
         .build();
 
-    let mut complete_url = PathBuf::new();
-    complete_url.push(registry_url);
+    let mut complete_url = PathBuf::from(registry_url);
     complete_url.push(name);
 
     info!("Pushing image: {}...", name);
     
-    // Unfortunately, working off of a fork of shiplift to get this to work --> push does not impl stream so have to deal with less data for pushing containers
+    // Push does not impl stream so have to deal with less data for pushing containers
+    // TODO -- write own function using docker API to push containers
     match docker.images().push(&complete_url.to_string_lossy(), &PushOptions::builder().auth(auth).build()).await {
         Ok(stream) => {
             stream
@@ -311,8 +303,7 @@ pub async fn pull_image(docker: &Docker, name: &str) -> Result<(), String>{
         .server_address(registry_url)
         .build();
         
-    let mut complete_url = PathBuf::new();
-    complete_url.push(registry_url);
+    let mut complete_url = PathBuf::from(registry_url);
     complete_url.push(name);
 
     info!("Attempting to pull image: {}", name);
