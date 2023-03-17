@@ -160,6 +160,7 @@ impl Display for WritableLogLocationTargetMap {
 struct FileLogger {
     targets: RwLock<WritableLogLocationTargetMap>,
     name: Lazy<&'static str>,
+    file_prefix: Lazy<(String, String)>,
 }
 
 struct LevelStringStruct {
@@ -188,8 +189,8 @@ impl Default for LevelStringStruct {
     fn default() -> Self {
         Self {
             error: color_text_fmt!(bold "31", "{:<5}", "ERROR").to_string(),
-            warn:  color_text_fmt!(bold "33", "{:<5}", "WARN" ).to_string(),
-            info:  color_text_fmt!(bold "36", "{:<5}", "INFO" ).to_string(),
+            warn:  color_text_fmt!(bold "33", "{:<5}", "WARN ").to_string(),
+            info:  color_text_fmt!(bold "36", "{:<5}", "INFO ").to_string(),
             debug: color_text_fmt!(bold "32", "{:<5}", "DEBUG").to_string(),
             trace: color_text_fmt!(bold "35", "{:<5}", "TRACE").to_string(),
         }
@@ -219,12 +220,18 @@ impl log::Log for FileLogger {
         let (level, args) = (record.level(), record.args());
 
         for target in target_map.0.get(&record.level()).into_iter().flatten() {
+            let (prefix, body) = with_path_prefix_stripped(record.module_path(), self.file_prefix.get());
+            
+
             let log_result = logging_parts!(
                 target; <==
                 "{} "   - Some(color_text_fmt!("38;5;147", "{}", utc.format("%b %d"))),
                 "{}"    - Some(color_text_fmt!("38;5;86", "{}", utc.format("%H:%M:%S"))),
                 "{} | " - Some(color_text_fmt!("38;5;23", "{}", utc.format("%.3f"))),
-                "{} "   - color_text_fmt!(option "38;5;47", "{}", record.module_path()),
+
+                "{}"   - color_text_fmt!(option "38;5;47", "{}", prefix),
+                "{} "   - color_text_fmt!(option "38;5;47", "{}", body),
+                
                 "{}" - color_text_fmt!(option "38;5;159", "{}", record.file())
                     => ":{}" - color_text_fmt!(option "38;5;159", "{:<3}", record.line())
                         => * "; ",
@@ -245,11 +252,28 @@ lazy_static! {
     static ref LOGGER: FileLogger = FileLogger {
         targets: RwLock::default(),
         name: Lazy::new(),
+        file_prefix: Lazy::new(),
     };
+}
+
+pub fn with_path_prefix_stripped<'a>(path: Option<&'a str>, prefix: Option<&'a (String, String)>) -> (Option<&'a str>, Option<&'a str>) {
+    if let (Some(path), Some((prefix, replace))) = (path, prefix) {
+        path.strip_prefix(prefix).map_or_else(
+            || (Some(""), Some(path)),
+            |stripped| (Some(replace), Some(stripped)),
+        )
+    } else {
+        (Some(""), path)
+    }
 }
 
 pub fn set_up_logging(input: &LogLocationTargetMap, name: &'static str) -> IOResult<()> {
     LOGGER.name.get_or_create(|| name);
+    if let Ok(value) = std::env::var("LOGGING_PREFIX_REPLACE") {
+        if let Some((prefix, replace)) = value.split_once("->") {
+            LOGGER.file_prefix.get_or_create(|| (prefix.to_string(), replace.to_string()));
+        }
+    }
 
     let mut target_hashmap = LOGGER
         .targets
