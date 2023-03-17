@@ -9,7 +9,7 @@ use dotenv::dotenv;
 
 #[cfg(unix)]
 
-use arcs_deploy_docker::{logging, build_image, fetch_chall_folder_names, docker_login, retrieve_images, build_all_images, push_image, pull_image};
+use arcs_deploy_docker::{logging, build_image, fetch_chall_folder_names, docker_login, retrieve_images, build_all_images, push_image, pull_image };
 
 #[tokio::main]
 async fn main() -> IOResult<()> {
@@ -22,12 +22,13 @@ async fn main() -> IOResult<()> {
         Ok(docker) => docker,
         Err(e) => return Err(IOError::new(std::io::ErrorKind::Other, e)),
     };
-    
-    // println!("{:#?}", retrieve_images(&docker).await);
-    // println!("{:?}", fetch_chall_folder_names());
-    // build_all_images(&docker).await.unwrap();
-    build_image(&docker, vec!["agent-rocket"]).await;
-    push_image(&docker, "agent-rocket").await;
+
+    // build_image(&docker, vec!["real-deal-html"]).await;
+    push_image(&docker, "real-deal-html").await;
+    // pull_image(&docker, "real-deal-html").await;
+    // build_image(&docker, vec!["agent-rocket"]).await;
+    // push_image(&docker, "agent-rocket").await;
+
     // match pull_image(&docker, "real-deal-html").await {
     //     Err(e) => return  Err(IOError::new(std::io::ErrorKind::Other, e)),
     //     _ => (),

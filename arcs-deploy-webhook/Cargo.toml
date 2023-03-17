@@ -14,5 +14,6 @@ serde = { version = "1.0.152", features = ["derive"] }
 arcs-deploy-logging = { version = "0.1.0", path = "../arcs-deploy-logging" }
 arcs-deploy-docker = { version = "0.1.0", path = "../arcs-deploy-docker" }
 arcs-deploy-k8s = { version = "0.1.0", path = "../arcs-deploy-k8s" }
-shiplift = { git = "https://github.com/charlolizard/shiplift", branch = "master" }
+shiplift = { git = "https://github.com/fortanix/shiplift", branch = "master" }
 dotenv = "0.15.0"
+kube = "0.74.0"

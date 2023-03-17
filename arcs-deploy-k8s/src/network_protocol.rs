@@ -13,8 +13,6 @@ pub struct Deploy {
     pub nc: Option<ChallengeParams>,
 }
 
-
-
 #[derive(Deserialize)]
 pub struct ChallengeParams {
     #[serde(deserialize_with = "implementation_of_deserialize_for_network_protocol::deserialize")]

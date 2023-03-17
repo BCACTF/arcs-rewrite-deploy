@@ -15,6 +15,13 @@ pub mod logging {
 
 use logging::*;
 
+// BIG TODOS --> 
+// GET RID OF CHALL FOLDER PATH REFERENCES, MIGRATE TO ENV VAR
+// MERGE DUPLICATE CODE SECTIONS
+// CLEAN UP CODE IN GENERAL, THIS REALLY SUCKS
+// IMPROVE LOGGING
+// CHECK OUT LOAD BALANCING (not priority)
+
 /// Retrieves challenge parameters for a given challenge (provided name and folder its contained in)
 fn fetch_challenge_params(name: &str, chall_folder_path: &str) -> Result<HashMap<&'static str, ChallengeParams>, String> {
     let mut yaml_path = PathBuf::new();
@@ -80,6 +87,7 @@ pub async fn create_client() -> Result<Client, String> {
                 },
                 Err(err) => {
                     error!("Error creating registry secret");
+                    warn!("Ensure k8s cluster is running");
                     debug!("Trace: {:?}", err);
                     Err(err.to_string())
                 }
@@ -114,8 +122,9 @@ pub async fn get_pods(client : Client) -> Result<ObjectList<Pod>, String> {
 /// 
 /// **chall_folder_path** is the base challenge directory where all challenges are contained in.
 /// 
-/// Ideally, will return a list of all challenges that were successfully deployed with corresponding addresses to access them.
-pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_folder_path: &str) -> Result<(), String> {
+/// Returns a vector of i32 with the corresponding port numbers of each challenge deployed.
+pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_folder_path: &str) -> Result<Vec<i32>, String> {
+    let mut port_list = Vec::new();
     for name in name_list {
         info!("Creating challenge {:?}", name);
         
@@ -166,8 +175,9 @@ pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_fold
         // add in tcp/udp differences
         // maybe look into LoadBalancer ingress to get external ip as well
         info!("Challenge {:?} successfully created --> port {}", name, service_port);
+        port_list.push(service_port);
     }
-    Ok(())
+    Ok(port_list)
 }
 
 /// TODO --> Add a check to see if there is more than 1 replica, and if so, set up a loadBalancer for that chall instead of a nodePort
@@ -383,7 +393,7 @@ async fn create_deployment(client: Client, name: &str, chall_folder_path: &str) 
         Ok(deployment_instance) => {
             info!("Deployment {} created", name);
             Ok(deployment_instance)
-        }
+        },
         Err(err) => {
             error!("Error creating deployment {}", name);
             info!("Trace: {:?}", err);
@@ -456,6 +466,7 @@ fn create_schema_deployment(name: &str, chall_params: &ChallengeParams) -> Resul
     };
 }
 
+// TODO --> Merge delete deployment and service into one function, secret might not be as easy but possible
 pub async fn delete_deployment(client : Client, name : &str) -> Result<(), String> {
     info!("Deleting deployment {:?}", name);
     let deployments: Api<Deployment> = Api::default_namespaced(client.clone());
@@ -544,6 +555,8 @@ pub async fn delete_challenge(client : Client, name_list : Vec<&str>) -> Result<
     Ok(())
 }
 
+
+// TODO - Reduce down to one function
 async fn deploy_exists(client: Client, name : &str) -> Result<bool, Error> {
     let deployments: Api<Deployment> = Api::default_namespaced(client.clone());
     if let Some(_deployment) = deployments.get_opt(name).await? {
@@ -574,6 +587,7 @@ async fn secret_exists(client: Client, name : &str) -> Result<bool, Error> {
 /// Helper function to just simplify and clean up environment var fetching
 /// 
 /// May want to create custom error types for this to improve error handling, not a big deal currently
+/// **TODO --> IMPROVE GLOBAL ENVIRONMENT SYSTEM**
 fn get_env(env_name: &str) -> Result<String, String> {
     match env::var(env_name) {
         Ok(val) => Ok(val.to_string()),
