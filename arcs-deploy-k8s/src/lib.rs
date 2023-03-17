@@ -122,8 +122,9 @@ pub async fn get_pods(client : Client) -> Result<ObjectList<Pod>, String> {
 /// 
 /// **chall_folder_path** is the base challenge directory where all challenges are contained in.
 /// 
-/// Ideally, will return a list of all challenges that were successfully deployed with corresponding addresses to access them.
-pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_folder_path: &str) -> Result<(), String> {
+/// Returns a vector of i32 with the corresponding port numbers of each challenge deployed.
+pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_folder_path: &str) -> Result<Vec<i32>, String> {
+    let mut port_list = Vec::new();
     for name in name_list {
         info!("Creating challenge {:?}", name);
         
@@ -174,8 +175,9 @@ pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_fold
         // add in tcp/udp differences
         // maybe look into LoadBalancer ingress to get external ip as well
         info!("Challenge {:?} successfully created --> port {}", name, service_port);
+        port_list.push(service_port);
     }
-    Ok(())
+    Ok(port_list)
 }
 
 /// TODO --> Add a check to see if there is more than 1 replica, and if so, set up a loadBalancer for that chall instead of a nodePort

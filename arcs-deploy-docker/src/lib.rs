@@ -282,13 +282,12 @@ pub async fn push_image(docker: &Docker, name: &str) -> Result<(), String> {
         },
         Err(e) => {
             error!("Error pushing image");
-            debug!("Trace: {:?}", e);
+            error!("Trace: {:?}", e);
             return Err(e.to_string());
         },
     };
 
     info!("Pushed image: {}", name);
-    warn!("Success may not be accurate. Check registry to ensure status.");
     Ok(())
 }
 

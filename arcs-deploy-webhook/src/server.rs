@@ -11,6 +11,8 @@ use shiplift::Docker;
 
 use crate::receiver::{ build_challenge, delete_challenge, push_challenge, deploy_challenge };
 
+use crate::logging::*;
+
 // TODO --> update all challenge_ids, commit_id, racelockid to be UUIDs,
 //          parse everything into correct datatypes (everything is just a string right now)
 // TODO --> figure out how to get logging to work when a function in a different crate is called
@@ -33,8 +35,12 @@ pub struct Response {
     message: String
 }
 
+
+
 #[post("/")]
 pub async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
+    info!("RECIEVED POST REQUEST");
+
     let docker: Docker = match docker_login().await {
         Ok(docker) => docker,
         Err(e) => return web::Json(Response{status: "Error logging into docker".to_string(), message: format!("Failed to deploy: {}", e)})

@@ -24,7 +24,7 @@ async fn main() -> IOResult<()> {
     };
 
     // build_image(&docker, vec!["real-deal-html"]).await;
-    // push_image(&docker, "real-deal-html").await;
+    push_image(&docker, "real-deal-html").await;
     // pull_image(&docker, "real-deal-html").await;
     // build_image(&docker, vec!["agent-rocket"]).await;
     // push_image(&docker, "agent-rocket").await;

@@ -6,6 +6,7 @@ use shiplift::Docker;
 use actix_web::{ web };
 
 use crate::server::Response;
+use crate::logging::*;
 
 // TODO --> Add function to deploy **everything**, 
 // initial deployments to k8s clusters & general instance management
@@ -13,68 +14,60 @@ use crate::server::Response;
 
 //  TODO --> build k8s instance using this as well
 pub async fn build_challenge(docker: Docker, name: &String) -> web::Json<Response> {
-    println!("Building '{}'...", name);
-
     let build_response = match build_image(&docker, vec![name.as_str()]).await {
         Ok(_) => Response{status: "Success deploying".to_string(), message: "Deployed".to_string()},
         Err(e) => Response{status: "Error deploying".to_string(), message: format!("Failed to deploy: {}", e)}
     };
 
-    println!("Successfully built '{}'", name);
     web::Json(build_response)
 }
 
 pub async fn push_challenge(docker: Docker, name: &String) -> web::Json<Response> {
-    println!("Pushing '{name}' to remote registry...");
-
     let push_response = match push_image(&docker, name).await {
         Ok(_) => Response{status: "Success pushing".to_string(), message: format!("Pushed {name}")},
-        Err(e) => {
-            println!("Error pushing: {}", e);
-            Response{status: "Error pushing".to_string(), message: format!("Failed to push: {}", e)}
-        }
+        Err(e) => Response{status: "Error pushing".to_string(), message: format!("Failed to push: {}", e)}
     };
 
-    println!("Pushed '{name}'... WARN: CHECK REMOTE FOR STATUS");
     web::Json(push_response)
 }
 
 pub async fn pull_challenge(docker: Docker, name: &String) -> web::Json<Response> {
-    println!("Pulling '{name}' from remote registry");
-
     let pullresponse = match pull_image(&docker, name).await {
         Ok(_) => Response{status: "Success pulling".to_string(), message: format!("Pulled '{name}'")},
-        Err(e) => {
-            println!("Error pulling: {}", e);
-            Response{status: "Error pulling".to_string(), message: format!("Failed to pull: {}", e)}
-        }
+        Err(e) => Response{status: "Error pulling".to_string(), message: format!("Failed to pull: {}", e)}
     };
 
-    println!("Pulled '{name}' from registry");
     web::Json(pullresponse)
 }
 
 // may want to move the other two functions into this one and just call this when user asks for deploy/redeploy
+// response message is port challenge is running on (or if it's not running, No Port Returned)
 pub async fn deploy_challenge(docker: Docker, k8s: Client, name: &String, chall_folder_path: &str) -> web::Json<Response> {
-    println!("Beginning deployment of '{name}' to k8s cluster...");
+    info!("Deploying {} to Kubernetes cluster...", name);
 
-    println!(">>> Pulling image...");
     let status = pull_challenge(docker, name).await;
     if status.status == "Error pulling" { return status; };
-    println!(">>> Successfully pulled image...");
-
+    
     let deploy_response = match create_full_k8s_deployment(k8s, vec![name], chall_folder_path).await {
-        Ok(_) => Response{status: "Success deploying".to_string(), message: "Deployed".to_string()},
+        Ok(ports) => {
+            if ports.len() <= 0 { 
+                error!("Error deploying {} to k8s cluster", name);
+                debug!("No Port Returned");
+                Response{status: "Error deploying".to_string(), message: "No Port Returned".to_string()}
+            } else {
+                Response{status: "Success deploying".to_string(), message: format!("{:?}", ports)}
+            }
+        }
         Err(e) => Response{status: "Error deploying".to_string(), message: format!("Failed to deploy: {}", e)}
     };
 
-    println!("Successfully deployed '{name}' to k8s cluster");
+    info!("Successfully deployed {} to k8s cluster", name);
     web::Json(deploy_response)
 }
 
 // TODO -- Delete docker image from remote registry and local
 pub async fn delete_challenge(_docker: Docker, client: Client, name: &String) -> web::Json<Response> {
-    println!("Deleting '{name}'...");
+    warn!("Deleting {}...", name);
 
     let delete_k8s_response = match delete_k8s_challenge(client, vec![name.as_str()]).await {
         Ok(_) => "Success deleting k8s deployment/service".to_string(),
