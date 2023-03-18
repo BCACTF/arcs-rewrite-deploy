@@ -220,8 +220,8 @@ impl log::Log for FileLogger {
         let (level, args) = (record.level(), record.args());
 
         for target in target_map.0.get(&record.level()).into_iter().flatten() {
-            let (prefix, body) = with_path_prefix_stripped(record.module_path(), self.file_prefix.get());
-            
+            let stripped = with_path_prefix_stripped(record.file(), self.file_prefix.get());
+            let full: Option<String> = stripped.map(|(prefix, body)| [prefix, body].into_iter().collect());
 
             let log_result = logging_parts!(
                 target; <==
@@ -229,10 +229,9 @@ impl log::Log for FileLogger {
                 "{}"    - Some(color_text_fmt!("38;5;86", "{}", utc.format("%H:%M:%S"))),
                 "{} | " - Some(color_text_fmt!("38;5;23", "{}", utc.format("%.3f"))),
 
-                "{}"   - color_text_fmt!(option "38;5;47", "{}", prefix),
-                "{} "   - color_text_fmt!(option "38;5;47", "{}", body),
+                "{} "   - color_text_fmt!(option "38;5;47", "{}", record.module_path()),
                 
-                "{}" - color_text_fmt!(option "38;5;159", "{}", record.file())
+                "{}" - color_text_fmt!(option "38;5;159", "{}", full.as_ref())
                     => ":{}" - color_text_fmt!(option "38;5;159", "{:<3}", record.line())
                         => * "; ",
                 "{} - " - Some(LEVEL_STRINGS.get_level(level)),
@@ -256,14 +255,14 @@ lazy_static! {
     };
 }
 
-pub fn with_path_prefix_stripped<'a>(path: Option<&'a str>, prefix: Option<&'a (String, String)>) -> (Option<&'a str>, Option<&'a str>) {
+pub fn with_path_prefix_stripped<'a>(path: Option<&'a str>, prefix: Option<&'a (String, String)>) -> Option<(&'a str, &'a str)> {
     if let (Some(path), Some((prefix, replace))) = (path, prefix) {
         path.strip_prefix(prefix).map_or_else(
-            || (Some(""), Some(path)),
-            |stripped| (Some(replace), Some(stripped)),
+            || Some(("", path)),
+            |stripped| Some((replace, stripped)),
         )
     } else {
-        (Some(""), path)
+        path.map(|p| ("", p))
     }
 }
 
