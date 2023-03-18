@@ -9,7 +9,9 @@ use kube::Client;
 use serde::{ Serialize, Deserialize };
 use shiplift::Docker;
 
-use crate::receiver::{ build_challenge, delete_challenge, push_challenge, deploy_challenge };
+use uuid::Uuid;
+
+use crate::receiver::{ delete_challenge, spawn_deploy_req };
 
 use crate::logging::*;
 
@@ -20,16 +22,15 @@ use crate::logging::*;
 #[derive(Deserialize)]
 pub struct Deploy {
     _type : String,
-    chall_id: String,
-    chall_name: Option<String>,
-    // commit_id: Option<u32>,
-    deploy_race_lock_id: Option<String>,
+    chall_id: Uuid,
+    deploy_race_lock_id: Uuid,
+    chall_name: String,
     chall_desc: Option<String>,
     chall_points: Option<String>,
     chall_meta: Option<String>
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Response {
     status: String,
     message: String
@@ -49,34 +50,23 @@ pub async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
         Err(e) => return web::Json(Response{status: "Error creating k8s client".to_string(), message: format!("Failed to delete: {}", e)})
     };
 
-    match info._type.as_str() {
-        "redeploy" | "deploy" => {
+    let uppercase_type = info._type.to_uppercase();
+
+    match uppercase_type.as_str() {
+        "REDEPLOY" | "DEPLOY" => {
             // Calls to this will be to redeploy/deploy a specific challenge
-            info!("{} request received", info._type.to_uppercase());
-            match &info.chall_name {
-                Some(chall_name) => {
-                    let build_status: actix_web::web::Json<Response> = build_challenge(docker.clone(), chall_name).await;
-                    if build_status.status == "Error building" { return build_status };
-
-                    let push_status: actix_web::web::Json<Response> = push_challenge(docker.clone(), chall_name).await;
-                    if push_status.status == "Error pushing" { return push_status };
-
-                    // may need to do some stuff for admin bots here
-                    let deploy_status: actix_web::web::Json<Response> = deploy_challenge(docker.clone(), k8s.clone(), chall_name, None).await;
-                    deploy_status
-                },
-                None => web::Json(Response{status: "Error deploying".to_string(), message: "Chall name not specified".to_string()})
+            info!("{} request received", uppercase_type);
+            let web::Json(Deploy { chall_name, chall_id, deploy_race_lock_id, ..}) = info;
+            match spawn_deploy_req(docker, k8s, chall_name, chall_id, deploy_race_lock_id) {
+                Ok(polling_id) => web::Json(Response { status: "Deployment started successfully".into(), message: polling_id.to_string() }),
+                Err(resp) => web::Json(resp)
             }
         },
-        "delete" => {
-            info!("{} request received", info._type.to_uppercase());
-            match &info.chall_name {
-                Some(chall_name) => {
-                    delete_challenge(docker, k8s, chall_name).await
-                },
-                None => web::Json(Response{status: "Error deleting".to_string(), message: "Chall name not specified".to_string()})
-            }
+        "DELETE" => {
+            info!("{} request received", uppercase_type);
+            delete_challenge(docker, k8s, &info.chall_name).await
         },
+
         _ => {
             info!("{} request received", info._type);
             warn!("Endpoint {} not implemented on deploy server", info._type);
