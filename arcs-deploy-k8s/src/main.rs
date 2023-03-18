@@ -18,18 +18,5 @@ async fn main() -> IOResult<()>{
 
     dotenv().ok();
 
-    let client: Client = match create_client().await {
-        Ok(client) => client,
-        Err(e) => {
-            return Err(IOError::new(std::io::ErrorKind::Other, e));
-        }
-    };
-
-
-    // delete_challenge(client.clone(), vec!["real-deal-html"]).await.unwrap();
-    // create_challenge(client.clone(), vec!["bof-shop"], "/Users/yusuf/Documents/code/arcs/arcs-rewrite/testdockerdirectory").await;
-    // create_challenge(client.clone(), vec!["real-deal-html"], "/Users/yusuf/Documents/code/arcs/arcs-rewrite/testdockerdirectory").await;
-    // generate_registry_secret(client.clone()).await;
-
     Ok(())
 }

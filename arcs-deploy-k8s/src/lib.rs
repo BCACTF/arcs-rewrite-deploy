@@ -16,16 +16,18 @@ pub mod logging {
 use logging::*;
 
 // BIG TODOS --> 
-// GET RID OF CHALL FOLDER PATH REFERENCES, MIGRATE TO ENV VAR
-// MERGE DUPLICATE CODE SECTIONS
+// GET RID OF CHALL FOLDER PATH REFERENCES, MIGRATE TO ENV VAR - DONE
+// MERGE DUPLICATE CODE SECTIONS 
 // CLEAN UP CODE IN GENERAL, THIS REALLY SUCKS
 // IMPROVE LOGGING
 // CHECK OUT LOAD BALANCING (not priority)
+// Right now, if it tries creating a deployment but does not have image locally, it doesn't say anything - not a huge deal since pulling will throw problem
 
 /// Retrieves challenge parameters for a given challenge (provided name and folder its contained in)
-fn fetch_challenge_params(name: &str, chall_folder_path: &str) -> Result<HashMap<&'static str, ChallengeParams>, String> {
-    let mut yaml_path = PathBuf::new();
-    yaml_path.push(chall_folder_path);
+fn fetch_challenge_params(name: &str, chall_folder_path: Option<&str>) -> Result<HashMap<&'static str, ChallengeParams>, String> {
+    let chall_folder = get_chall_folder(chall_folder_path)?;
+    
+    let mut yaml_path = PathBuf::from(chall_folder);
     yaml_path.push(name);
     yaml_path.push("chall.yaml");
 
@@ -72,7 +74,6 @@ fn fetch_challenge_params(name: &str, chall_folder_path: &str) -> Result<HashMap
         .collect();
 
     Ok(deploy_service_types)
-
 }
 
 /// Creates the k8s client to be used for all k8s-related functions. Generates registry_secret during creation of client as well.
@@ -123,7 +124,7 @@ pub async fn get_pods(client : Client) -> Result<ObjectList<Pod>, String> {
 /// **chall_folder_path** is the base challenge directory where all challenges are contained in.
 /// 
 /// Returns a vector of i32 with the corresponding port numbers of each challenge deployed.
-pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_folder_path: &str) -> Result<Vec<i32>, String> {
+pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_folder_path: Option<&str>) -> Result<Vec<i32>, String> {    
     let mut port_list = Vec::new();
     for name in name_list {
         info!("Creating challenge {:?}", name);
@@ -181,7 +182,7 @@ pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_fold
 }
 
 /// TODO --> Add a check to see if there is more than 1 replica, and if so, set up a loadBalancer for that chall instead of a nodePort
-async fn create_service(client: Client, name : &str, chall_folder_path: &str) -> Result<Service, String> {
+async fn create_service(client: Client, name : &str, chall_folder_path: Option<&str>) -> Result<Service, String> {
     let services: Api<Service> = Api::default_namespaced(client.clone());
     let service_name = format!("{}-service", name);
 
@@ -343,7 +344,7 @@ async fn create_schema_service(name: &str, params: &ChallengeParams) -> Result<S
 }
 
 /// Generates deployment object for a given challenge
-async fn create_deployment(client: Client, name: &str, chall_folder_path: &str) -> Result<Deployment, String> {
+async fn create_deployment(client: Client, name: &str, chall_folder_path: Option<&str>) -> Result<Deployment, String> {
     let deployments: Api<Deployment> = Api::default_namespaced(client.clone());
 
     info!("Creating deployment");
@@ -595,6 +596,23 @@ fn get_env(env_name: &str) -> Result<String, String> {
             error!("Error reading \"{}\" env var", env_name);
             debug!("Trace: {:?}", e);
             return Err(e.to_string());
+        }
+    }
+}
+
+/// Helper function to just simplify and clean up chall folder fetching
+pub fn get_chall_folder(chall_folder_path: Option<&str>) -> Result<String, String> {
+    match chall_folder_path {
+        Some(chall_folder_path) => Ok(chall_folder_path.to_string()),
+        None => {
+            match get_env("CHALL_FOLDER") {
+                Ok(path) => Ok(path.to_string()),
+                Err(e) => {
+                    error!("Error getting challenge folder path");
+                    info!("Trace: {:?}", e);
+                    Err(e.to_string())
+                }
+            }
         }
     }
 }

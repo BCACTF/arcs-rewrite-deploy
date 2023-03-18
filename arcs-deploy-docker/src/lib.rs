@@ -343,6 +343,38 @@ pub async fn pull_image(docker: &Docker, name: &str) -> Result<(), String>{
     Ok(())
 }
 
+/// Deletes a local Docker image
+/// If image is not found, skips deletion and logs a warning
+pub async fn delete_image(docker: &Docker, name: &str) -> Result<(), String> {
+    info!("Deleting image: {}", name);
+
+    let registry_url = &get_env("DOCKER_REGISTRY_URL")?;
+    let mut full_challenge_name = PathBuf::from(registry_url);
+    full_challenge_name.push(name);
+
+    match docker.images().get(full_challenge_name.to_string_lossy()).inspect().await {
+        Ok(_) => {info!("Image '{}' found", full_challenge_name.to_string_lossy())},
+        Err(e) => {
+            warn!("Image '{}' not found", full_challenge_name.to_string_lossy());
+            debug!("Trace: {:?}", e);
+            warn!("Skipping deletion of image: {}", name);
+            return Err(e.to_string());
+        }    
+    };
+
+    match docker.images().get(full_challenge_name.to_string_lossy()).delete().await {
+        Ok(_) => {
+            info!("Successfully deleted image: {}", name);
+            Ok(())
+        },
+        Err(e) => {
+            warn!("Error deleting image");
+            error!("Trace: {:?}", e);
+            return Err(e.to_string());
+        }
+    }
+}
+
 /// Helper function to just simplify and clean up environment var fetching
 /// May want to create custom error types for this to improve error handling
 fn get_env(env_name: &str) -> Result<String, String> {

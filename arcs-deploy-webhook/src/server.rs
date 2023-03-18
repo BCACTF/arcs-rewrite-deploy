@@ -35,8 +35,6 @@ pub struct Response {
     message: String
 }
 
-
-
 #[post("/")]
 pub async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
     info!("RECIEVED POST REQUEST");
@@ -54,7 +52,7 @@ pub async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
     match info._type.as_str() {
         "redeploy" | "deploy" => {
             // Calls to this will be to redeploy/deploy a specific challenge
-            println!("{}", info._type);
+            info!("{} request received", info._type.to_uppercase());
             match &info.chall_name {
                 Some(chall_name) => {
                     let build_status: actix_web::web::Json<Response> = build_challenge(docker.clone(), chall_name).await;
@@ -63,14 +61,15 @@ pub async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
                     let push_status: actix_web::web::Json<Response> = push_challenge(docker.clone(), chall_name).await;
                     if push_status.status == "Error pushing" { return push_status };
 
-                    let deploy_status: actix_web::web::Json<Response> = deploy_challenge(docker.clone(), k8s.clone(), chall_name, "/Users/yusuf/Documents/code/arcs/arcs-rewrite/testdockerdirectory").await;
+                    // may need to do some stuff for admin bots here
+                    let deploy_status: actix_web::web::Json<Response> = deploy_challenge(docker.clone(), k8s.clone(), chall_name, None).await;
                     deploy_status
                 },
                 None => web::Json(Response{status: "Error deploying".to_string(), message: "Chall name not specified".to_string()})
             }
         },
         "delete" => {
-            println!("{}", info._type);
+            info!("{} request received", info._type.to_uppercase());
             match &info.chall_name {
                 Some(chall_name) => {
                     delete_challenge(docker, k8s, chall_name).await
@@ -79,8 +78,9 @@ pub async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
             }
         },
         _ => {
-            unimplemented!(); 
-            println!("other");
+            info!("{} request received", info._type);
+            warn!("Endpoint {} not implemented on deploy server", info._type);
+            web::Json(Response{status: "Endpoint Not Implemented".to_string(), message: format!("Endpoint {} not implemented on deploy server", info._type)})
         },
     }
 }

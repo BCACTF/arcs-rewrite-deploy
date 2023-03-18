@@ -9,7 +9,7 @@ use dotenv::dotenv;
 
 #[cfg(unix)]
 
-use arcs_deploy_docker::{logging, build_image, fetch_chall_folder_names, docker_login, retrieve_images, build_all_images, push_image, pull_image };
+use arcs_deploy_docker::{logging, build_image, fetch_chall_folder_names, docker_login, retrieve_images, build_all_images, push_image, pull_image, delete_image };
 
 #[tokio::main]
 async fn main() -> IOResult<()> {
@@ -17,22 +17,6 @@ async fn main() -> IOResult<()> {
 
     dotenv().ok();
     arcs_deploy_docker::verify_env().map_err(to_io_error)?;
-
-    let docker: Docker = match docker_login().await {
-        Ok(docker) => docker,
-        Err(e) => return Err(IOError::new(std::io::ErrorKind::Other, e)),
-    };
-
-    // build_image(&docker, vec!["real-deal-html"]).await;
-    push_image(&docker, "real-deal-html").await;
-    // pull_image(&docker, "real-deal-html").await;
-    // build_image(&docker, vec!["agent-rocket"]).await;
-    // push_image(&docker, "agent-rocket").await;
-
-    // match pull_image(&docker, "real-deal-html").await {
-    //     Err(e) => return  Err(IOError::new(std::io::ErrorKind::Other, e)),
-    //     _ => (),
-    // };
 
     Ok(())
 }

@@ -1,5 +1,5 @@
-use arcs_deploy_docker::{ build_image, push_image, pull_image };
-use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge};
+use arcs_deploy_docker::{ build_image, delete_image as delete_docker_image, push_image, pull_image };
+use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge, get_chall_folder};
 
 use kube::{Client};
 use shiplift::Docker;
@@ -8,7 +8,7 @@ use actix_web::{ web };
 use crate::server::Response;
 use crate::logging::*;
 
-// TODO --> Add function to deploy **everything**, 
+// TODO --> Add function to deploy everything, 
 // initial deployments to k8s clusters & general instance management
 // (this may be done through ansible but setting up cluster as well)
 
@@ -42,13 +42,18 @@ pub async fn pull_challenge(docker: Docker, name: &String) -> web::Json<Response
 
 // may want to move the other two functions into this one and just call this when user asks for deploy/redeploy
 // response message is port challenge is running on (or if it's not running, No Port Returned)
-pub async fn deploy_challenge(docker: Docker, k8s: Client, name: &String, chall_folder_path: &str) -> web::Json<Response> {
+pub async fn deploy_challenge(docker: Docker, k8s: Client, name: &String, chall_folder_path: Option<&str>) -> web::Json<Response> {
     info!("Deploying {} to Kubernetes cluster...", name);
+
+    let chall_folder = match get_chall_folder(chall_folder_path) {
+        Ok(path) => path,
+        Err(e) => return web::Json(Response{status: "Error fetching challenge folder path".to_string(), message: format!("Failed to deploy: {}", e)})
+    };
 
     let status = pull_challenge(docker, name).await;
     if status.status == "Error pulling" { return status; };
     
-    let deploy_response = match create_full_k8s_deployment(k8s, vec![name], chall_folder_path).await {
+    let deploy_response = match create_full_k8s_deployment(k8s, vec![name], Some(&chall_folder)).await {
         Ok(ports) => {
             if ports.len() <= 0 { 
                 error!("Error deploying {} to k8s cluster", name);
@@ -65,18 +70,30 @@ pub async fn deploy_challenge(docker: Docker, k8s: Client, name: &String, chall_
     web::Json(deploy_response)
 }
 
-// TODO -- Delete docker image from remote registry and local
-pub async fn delete_challenge(_docker: Docker, client: Client, name: &String) -> web::Json<Response> {
+pub async fn delete_challenge(docker: Docker, client: Client, name: &String) -> web::Json<Response> {
     warn!("Deleting {}...", name);
 
-    let delete_k8s_response = match delete_k8s_challenge(client, vec![name.as_str()]).await {
-        Ok(_) => "Success deleting k8s deployment/service".to_string(),
-        Err(e) => format!("Error deleting k8s deployment/service: {:?}", e)
+    match delete_k8s_challenge(client, vec![name.as_str()]).await {
+        Ok(_) => {
+            info!("Successfully deleted {} from k8s cluster", name);
+            "Success deleting k8s deployment/service".to_string()
+        },
+        Err(e) => {
+            error!("Error deleting {} from k8s cluster", name);
+            error!("Trace: {}", e);
+            return web::Json(Response{status: "Error deleting k8s deployment/service".to_string(), message: e});
+        } 
     };
 
-    if delete_k8s_response.contains("Error") {
-        return web::Json(Response{status: "Error deleting k8s deployment/service".to_string(), message: delete_k8s_response});
-    }
+    match delete_docker_image(&docker, name).await {
+        Ok(_) => {
+            info!("Successfully deleted {} from Docker", name);
+            "Success deleting docker image".to_string()
+        },
+        Err(e) => {
+            return web::Json(Response{status: "Error deleting docker image".to_string(), message: e});
+        } 
+    };
 
     println!("Deleted '{name}'");
     web::Json(Response{status: "Success deleting".to_string(), message: format!("Deleted '{name}'")})
