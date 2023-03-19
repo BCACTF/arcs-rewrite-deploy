@@ -3,10 +3,9 @@ use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_ch
 
 use kube::{Client};
 use shiplift::Docker;
-use actix_web::{ web };
-use uuid::Uuid;
+use super::responses::{ Metadata, Response, StatusCode };
+use serde_json::json;
 
-use crate::server::Response;
 use crate::logging::*;
 use crate::polling::{ PollingId, register_chall_deployment, fail_deployment, succeed_deployment, advance_deployment_step };
 
@@ -23,15 +22,40 @@ pub enum DeployProcessErr {
     Deploy(String),
 }
 
-impl From<DeployProcessErr> for Response {
-    fn from(err: DeployProcessErr) -> Self {
+impl From<(DeployProcessErr, Metadata)> for Response {
+    fn from((err, meta): (DeployProcessErr, Metadata)) -> Self {
         use DeployProcessErr::*;
         match err {
-            Build(s) => Response { status: "Error building".to_string(), message: format!("Failed to build: {}", s) },
-            Push(s) => Response { status: "Error pushing".to_string(), message: format!("Failed to push: {}", s) },
-            Pull(s) => Response { status: "Error pulling".to_string(), message: format!("Failed to pull: {}", s) },
-            Fetch(s) => Response { status: "Error fetching".to_string(), message: format!("Failed to fetch: {}", s) },
-            Deploy(s) => Response { status: "Error deploying".to_string(), message: format!("Failed to deploy: {}", s) },
+            Build(s) => Response::server_deploy_process_err(
+                1,
+                "Error building docker image",
+                Some(json!({ "reason": s })),
+                meta,
+            ),
+            Push(s) => Response::server_deploy_process_err(
+                2,
+                "Error pushing to registry",
+                Some(json!({ "reason": s })),
+                meta,
+            ),
+            Pull(s) => Response::server_deploy_process_err(
+                3,
+                "Error pulling from registry",
+                Some(json!({ "reason": s })),
+                meta,
+            ),
+            Fetch(s) => Response::server_deploy_process_err(
+                4,
+                "Error fetching challenge folder",
+                Some(json!({ "reason": s })),
+                meta,
+            ),
+            Deploy(s) => Response::server_deploy_process_err(
+                5,
+                "Error deploying to Kubernetes",
+                Some(json!({ "reason": s })),
+                meta,
+            ),
         }
     }
 }
@@ -91,33 +115,37 @@ pub async fn deploy_challenge(
     }
 }
 
-pub async fn delete_challenge(docker: Docker, client: Client, name: &String) -> web::Json<Response> {
+// FIXME: Deprecation bad.
+pub async fn delete_challenge(docker: Docker, client: Client, meta: Metadata) -> Response {
+    let name = meta.chall_name();
+    
     warn!("Deleting {}...", name);
 
     match delete_k8s_challenge(client, vec![name.as_str()]).await {
         Ok(_) => {
-            info!("Successfully deleted {} from k8s cluster", name);
-            "Success deleting k8s deployment/service".to_string()
+            info!("Successfully deleted {} from Kubernetes cluster", name);
+            "Success deleting Kubernetes deployment/service".to_string()
         },
         Err(e) => {
-            error!("Error deleting {} from k8s cluster", name);
+            error!("Error deleting {} from Kubernetes cluster", name);
             error!("Trace: {}", e);
-            return web::Json(Response{status: "Error deleting k8s deployment/service".to_string(), message: e});
+            return Response::custom(meta, StatusCode::custom(1234, "Error deleting k8s deployment/service"));
         } 
     };
 
     match delete_docker_image(&docker, name).await {
         Ok(_) => {
             info!("Successfully deleted {} from Docker", name);
-            "Success deleting docker image".to_string()
+            "Success deleting Docker image".to_string()
         },
         Err(e) => {
-            return web::Json(Response{status: "Error deleting docker image".to_string(), message: e});
+            return Response::custom(meta, StatusCode::custom(1235, "Error deleting Docker image"));
         } 
     };
 
     println!("Deleted '{name}'");
-    web::Json(Response{status: "Success deleting".to_string(), message: format!("Deleted '{name}'")})
+    let name = name.clone();
+    Response::success(meta, Some(json!({ "chall_name": name })))
 }
 
 
@@ -137,20 +165,23 @@ pub fn advance_with_fail_log(polling_id: PollingId) -> bool {
     }
 }
 
-pub fn spawn_deploy_req(docker: Docker, client: Client, name: String, chall_id: Uuid, race_lock: Uuid) -> Result<PollingId, Response> {
-    let polling_id = PollingId::new(chall_id, race_lock);
+pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Result<Response, Response> {
+    let polling_id = meta.poll_id();
+    let name = meta.chall_name().clone();
 
-    if let Err(e) = register_chall_deployment(polling_id) {
-        return Err(Response {
-            status: "Error registering deployment".to_string(),
-            message: format!("{e:?}")
-        });
+
+    if let Err(status) = register_chall_deployment(polling_id) {
+        return Err(Response::poll_id_already_in_use(polling_id, status, meta));
     }
 
+    let spawn_meta = meta.clone();
     tokio::spawn(async move {
+        let meta = spawn_meta;
         if let Err(build_err) = build_challenge(docker.clone(), &name, polling_id).await {
             error!("Failed to build `{name}` ({polling_id}) with err {build_err:?}");
-            fail_deployment(polling_id, build_err.into());
+            if let Err(_) = fail_deployment(polling_id, (build_err, meta).into()) {
+                error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+            }
             return;
         }
         if !advance_with_fail_log(polling_id) { return; }
@@ -158,7 +189,9 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, name: String, chall_id: 
     
         if let Err(push_err) = push_challenge(docker.clone(), &name, polling_id).await {
             error!("Failed to push `{name}` ({polling_id}) with err {push_err:?}");
-            fail_deployment(polling_id, push_err.into());
+            if let Err(_) = fail_deployment(polling_id, (push_err, meta).into()) {
+                error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+            }
             return;
         }
         if !advance_with_fail_log(polling_id) { return; }
@@ -166,16 +199,28 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, name: String, chall_id: 
        match deploy_challenge(docker.clone(), client.clone(), &name, None, polling_id).await {
             Ok(response) => {
                 info!("Successfully deployed `{name}` ({polling_id}) to port(s): {response:?}");
-                succeed_deployment(polling_id, response);
+                if let Err(_) = succeed_deployment(polling_id, response) {
+                    error!("`succeed_deployment` failed to mark polling id {polling_id} as succeeded");
+                }
             },
             Err(deploy_err) => {
                 error!("Failed to deploy `{name}` ({polling_id}) with err {deploy_err:?}");
-                fail_deployment(polling_id, deploy_err.into());
+                if let Err(_) = fail_deployment(polling_id, (deploy_err, meta).into()) {
+                    error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+                }
                 return;
             }
         }
+
+        
     });
 
-    Ok(polling_id)
+    Ok(Response::success(
+        meta,
+        Some(json!({
+            "status": "Deployment started successfully", 
+            "message": polling_id,
+        })),
+    ))
 }
 

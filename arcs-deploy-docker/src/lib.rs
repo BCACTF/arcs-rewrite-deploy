@@ -116,8 +116,6 @@ pub async fn build_image(docker: &Docker, list_chall_names : Vec<&str>) -> Resul
                         ImageBuildChunk::Digest {aux} => {
                             info!("Image digest: {:?}", aux);
                         }
-                        // currently not formatting anything with pull status (i.e. pulling ubuntu image for binex challs)
-                        // TODO --> Add nice formatting and process the data nicely
                         ImageBuildChunk::PullStatus { .. } => {
                             trace!("{:?}", output);
                         }
@@ -307,7 +305,6 @@ pub async fn pull_image(docker: &Docker, name: &str) -> Result<(), String>{
 
     info!("Attempting to pull image: {}", name);
 
-    // TODO --> add better logging for pulling challenges (deal with stream and use resultbuffer to process info)
     let mut stream = docker.images().pull(&PullOptions::builder().auth(auth).image(complete_url.to_string_lossy()).build());
     while let Some(data) = stream.next().await {
         match data {
@@ -323,9 +320,7 @@ pub async fn pull_image(docker: &Docker, name: &str) -> Result<(), String>{
                     }, 
                     ImageBuildChunk::Digest {aux} => {
                         info!("Image digest: {:?}", aux);
-                    }
-                    // currently not formatting anything with pull status (i.e. pulling ubuntu image for binex challs)
-                    // TODO --> Add nice formatting and process the data nicely
+                    },
                     ImageBuildChunk::PullStatus { .. } => {
                         trace!("{:?}", output);
                     }

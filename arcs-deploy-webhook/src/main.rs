@@ -5,7 +5,6 @@ use arcs_deploy_webhook::logging;
 
 use std::io::{Result as IOResult};
 
-// TODO --> improve env var system
 use dotenv::dotenv;
 
 #[tokio::main]

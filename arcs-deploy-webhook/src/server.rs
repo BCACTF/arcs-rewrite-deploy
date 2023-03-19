@@ -1,76 +1,80 @@
 pub mod emitter;
 pub mod receiver;
+pub mod responses;
 
+use responses::{ Response, Metadata };
 use actix_web::{ post, App, HttpServer, web, Responder };
 use arcs_deploy_docker::docker_login;
 use arcs_deploy_k8s::create_client;
 use kube::Client;
 // use arcs_deploy_k8s::delete_challenge;
-use serde::{ Serialize, Deserialize };
+use serde::Deserialize;
 use shiplift::Docker;
-
-use uuid::Uuid;
 
 use crate::receiver::{ delete_challenge, spawn_deploy_req };
 
 use crate::logging::*;
+use crate::polling::{ PollingId, poll_deployment };
 
-// TODO --> update all challenge_ids, commit_id, racelockid to be UUIDs,
-//          parse everything into correct datatypes (everything is just a string right now)
-// TODO --> figure out how to get logging to work when a function in a different crate is called
-//          most likely want to start server, and then just have all of these functions called asynchronously as things run 
 #[derive(Deserialize)]
 pub struct Deploy {
     _type : String,
-    chall_id: Uuid,
-    deploy_race_lock_id: Uuid,
+    deploy_identifier: PollingId,
     chall_name: String,
-    chall_desc: Option<String>,
-    chall_points: Option<String>,
+
     chall_meta: Option<String>
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct Response {
-    status: String,
-    message: String
-}
-
-#[post("/")]
-pub async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
-    info!("RECIEVED POST REQUEST");
-
+async fn generate_clients(meta: Metadata) -> Result<(Docker, Client), Response> {
     let docker: Docker = match docker_login().await {
         Ok(docker) => docker,
-        Err(e) => return web::Json(Response{status: "Error logging into docker".to_string(), message: format!("Failed to deploy: {}", e)})
+        Err(err) => return Err(Response::docker_login_err(&err, meta)),
     };
     
     let k8s : Client = match create_client().await {
         Ok(client) => client,
-        Err(e) => return web::Json(Response{status: "Error creating k8s client".to_string(), message: format!("Failed to delete: {}", e)})
+        Err(err) => return Err(Response::k8s_login_err(&err, meta)),
     };
 
-    let uppercase_type = info._type.to_uppercase();
+    Ok((docker, k8s))
+}
 
-    match uppercase_type.as_str() {
+#[post("/")]
+pub async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
+    let meta: Metadata = From::from(&info.0);
+    
+    info!("{} request received", meta.endpoint_name());
+
+    match meta.endpoint_name().as_str() {
         "REDEPLOY" | "DEPLOY" => {
             // Calls to this will be to redeploy/deploy a specific challenge
-            info!("{} request received", uppercase_type);
-            let web::Json(Deploy { chall_name, chall_id, deploy_race_lock_id, ..}) = info;
-            match spawn_deploy_req(docker, k8s, chall_name, chall_id, deploy_race_lock_id) {
-                Ok(polling_id) => web::Json(Response { status: "Deployment started successfully".into(), message: polling_id.to_string() }),
-                Err(resp) => web::Json(resp)
-            }
+            let (docker, k8s) = match generate_clients(meta.clone()).await {
+                Ok((d, k)) => (d, k),
+                Err(resp) => return resp.wrap(),
+            };
+
+            match spawn_deploy_req(docker, k8s, meta) {
+                Ok(resp) => resp,
+                Err(resp) => resp,
+            }.wrap()
         },
         "DELETE" => {
-            info!("{} request received", uppercase_type);
-            delete_challenge(docker, k8s, &info.chall_name).await
+            let (docker, k8s) = match generate_clients(meta.clone()).await {
+                Ok((d, k)) => (d, k),
+                Err(resp) => return resp.wrap(),
+            };
+            
+            delete_challenge(docker, k8s, meta).await.wrap()
         },
-
+        "POLL" => {
+            match poll_deployment(info.deploy_identifier) {
+                Ok(info) => Response::success(meta, serde_json::to_value(info).ok()),
+                Err(poll_id) => Response::poll_id_doesnt_exist(poll_id, meta),
+            }.wrap()
+        },
         _ => {
-            info!("{} request received", info._type);
             warn!("Endpoint {} not implemented on deploy server", info._type);
-            web::Json(Response{status: "Endpoint Not Implemented".to_string(), message: format!("Endpoint {} not implemented on deploy server", info._type)})
+            Response::endpoint_err(&info._type, meta).wrap()
         },
     }
 }
