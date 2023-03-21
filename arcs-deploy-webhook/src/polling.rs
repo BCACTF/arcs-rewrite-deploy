@@ -248,13 +248,12 @@ pub fn _update_deployment_state(id: PollingId, new_status: DeploymentStatus) -> 
     }
 }
 
-// FIXME - Does not correctly update deployment steps
 pub fn advance_deployment_step(id: PollingId, new_step: Option<DeployStep>) -> Result<DeploymentStatus, PollingId> {
-    if let Some(status) = CURRENT_DEPLOYMENTS.get_mut(&id) {
-        if let DeploymentStatus::InProgress(mut _time, mut _step) = *status {
-            let new_step = new_step.or_else(|| _step.next()).ok_or(id)?;
-            _step = new_step;
-            _time = Instant::now();
+    if let Some(mut status) = CURRENT_DEPLOYMENTS.get_mut(&id) {
+        if let DeploymentStatus::InProgress(time, step) = &mut *status {
+            let new_step = new_step.or_else(|| step.next()).ok_or(id)?;
+            *step = new_step;
+            *time = Instant::now();
             Ok(status.clone())
         } else {
             Err(id)
