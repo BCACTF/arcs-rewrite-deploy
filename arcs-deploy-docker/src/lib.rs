@@ -32,6 +32,11 @@ impl From<IOError> for VerifyEnvError {
     }
 }
 
+/// Creates the [`Docker`][Docker] client for use throughout the deployment process
+/// 
+/// ## Returns
+/// - `Ok(Docker)` - Docker client
+/// - `Err(String)` - Error trace
 pub async fn docker_login() -> Result<Docker, String> {
     let docker = Docker::new();
     match docker.version().await {
@@ -76,9 +81,21 @@ pub async fn retrieve_containers(docker: &Docker) -> Result <Vec<ContainerInfo>,
     }
 }
 
-/// Builds a Docker image from the Dockerfile contained in the folder with **challname** (assumes Dockerfile is in the root of the challenge folder provided).
-/// Takes in a Vec<&str> of challenge names to support building multiple images via one call.
-/// If a challenge already exists, Docker deals with rebuilding and whatnot.
+/// Builds a Docker image from the Dockerfile contained in the folder with a given `chall_name`
+/// 
+/// Currently assumes Dockerfile is in the root of the challenge folder provided
+/// 
+/// If a challenge already exists, Docker deals with rebuilding and whatnot. If an error occurs while building, logs the error and skips to the next challenge.
+/// 
+/// ## Parameters
+/// - `docker` : [`Docker`][Docker]
+///     - Docker client to build the challenge with
+/// - `list_chall_names` : `Vec<&str>`
+///     - List of challenge names to build an image for
+/// 
+/// ## Returns
+/// - `Ok(())` - Image(s) built successfully
+/// - `Err(String)` - Error trace
 pub async fn build_image(docker: &Docker, list_chall_names : Vec<&str>) -> Result<(), String> {
     let challenge_folder = &get_env("CHALL_FOLDER")?;
     let registry_url = &get_env("DOCKER_REGISTRY_URL")?;
@@ -135,6 +152,13 @@ pub async fn build_image(docker: &Docker, list_chall_names : Vec<&str>) -> Resul
     Ok(())
 }
 
+/// Helper function to ensure that all required environment variables are set
+/// 
+/// Reads in the `.required_envs` file and checks that all of the environment variables listed in that file are set
+/// 
+/// ## Returns
+/// - `Ok(())` - All required environment variables are set
+/// - `Err(VerifyEnvError)` - Error indicating that a variable was not set. Logs the list of missing variables
 pub fn verify_env() -> Result<(), VerifyEnvError> {
     use logging::*;
 
@@ -164,7 +188,11 @@ pub fn verify_env() -> Result<(), VerifyEnvError> {
 
 // TODO --> add support for admin bot challenges (or challs w multiple dockerfiles) (most likely admin bot connection will be dealt w/ k8s side)
 // also probably try and figure out a better way of doing this
-/// Fetches the name of all folders in the provided **CHALL_FOLDER** env var that contain a Dockerfile in the root of the folder (will be expanded in the future to check recursively for child folders)
+/// Fetches the name of all folders in the `CHALL_FOLDER` environment variable that contain a Dockerfile in their root
+/// 
+/// ## Returns
+/// - `Ok(Vec<String>)` - List of challenges with Dockerfiles in root
+/// - `Err(String)` - Error trace (likely a missing environment variable or failure to read a directory)
 pub fn fetch_chall_folder_names() -> Result<Vec<String>, String> {
     let local_repo_path = PathBuf::from( &get_env("CHALL_FOLDER")? );
 
@@ -234,7 +262,7 @@ pub fn fetch_chall_folder_names() -> Result<Vec<String>, String> {
     }
 }
 
-/// Quality of life function --> Builds all images that it finds in the challenge directory
+/// Quality of life function that builds all images with Dockerfiles that it finds in the `CHALL_FOLDER` direectory
 pub async fn build_all_images(docker : &Docker) -> Result<String, String> {
     match fetch_chall_folder_names() {
         Ok(names) => {
@@ -252,10 +280,14 @@ pub async fn build_all_images(docker : &Docker) -> Result<String, String> {
     };
 }
 
-/// Pushes image to remote registry specified by **DOCKER_REGISTRY_URL** env var
+// TODO --> Write own push function that impl stream to better update users on progress
+/// Pushes image to remote registry specified by `DOCKER_REGISTRY_URL` env var
 /// 
-/// Important Note: Does not accurately throw errors/warn if something happens when pushing containers.
-/// TODO --> Write own push function that impl stream to accurately return errors
+/// Authenticates with the `DOCKER_REGISTRY_USERNAME` and `DOCKER_REGISTRY_PASSWORD` environment variables
+/// 
+/// ## Returns
+/// - `Ok(())` - Image successfully pushed
+/// - `Err(String)` - Error occurred while pushing
 pub async fn push_image(docker: &Docker, name: &str) -> Result<(), String> {
     let registry_username = &get_env("DOCKER_REGISTRY_USERNAME")?;
     let registry_password = &get_env("DOCKER_REGISTRY_PASSWORD")?;
@@ -289,6 +321,13 @@ pub async fn push_image(docker: &Docker, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Pulls image from remote registry specified by `DOCKER_REGISTRY_URL` env var
+/// 
+/// Authenticates with the `DOCKER_REGISTRY_USERNAME` and `DOCKER_REGISTRY_PASSWORD` environment variables
+/// 
+/// ## Returns
+/// - `Ok(())` - Image successfully pulled
+/// - `Err(String)` - Error occurred while pulling
 pub async fn pull_image(docker: &Docker, name: &str) -> Result<(), String>{
     let registry_username = &get_env("DOCKER_REGISTRY_USERNAME")?;
     let registry_password = &get_env("DOCKER_REGISTRY_PASSWORD")?;
@@ -339,7 +378,12 @@ pub async fn pull_image(docker: &Docker, name: &str) -> Result<(), String>{
 }
 
 /// Deletes a local Docker image
+/// 
 /// If image is not found, skips deletion and logs a warning
+/// 
+/// ## Returns
+/// - `Ok(())` - Image successfully deleted
+/// - `Err(String)` - Error occurred while deleting
 pub async fn delete_image(docker: &Docker, name: &str) -> Result<(), String> {
     info!("Deleting image: {}", name);
 
@@ -370,8 +414,7 @@ pub async fn delete_image(docker: &Docker, name: &str) -> Result<(), String> {
     }
 }
 
-/// Helper function to just simplify and clean up environment var fetching
-/// May want to create custom error types for this to improve error handling
+/// Helper function to just simplify and clean up environment variable fetching
 fn get_env(env_name: &str) -> Result<String, String> {
     match env::var(env_name) {
         Ok(val) => Ok(val.to_string()),

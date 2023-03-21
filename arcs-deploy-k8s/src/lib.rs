@@ -23,7 +23,11 @@ use logging::*;
 // CHECK OUT LOAD BALANCING (not priority)
 // Right now, if it tries creating a deployment but does not have image locally, it doesn't say anything - not a huge deal since pulling will throw problem
 
-/// Retrieves challenge parameters for a given challenge (provided name and folder its contained in)
+/// Retrieves challenge parameters for a given challenge, given a name and containing folder
+/// 
+/// ## Returns
+/// - `Ok(HashMap<&'static str, ChallengeParams>)` - HashMap of challenge names to challenge parameters for each service type
+/// - `Err(String)` - Error trace if error occurs
 fn fetch_challenge_params(name: &str, chall_folder_path: Option<&str>) -> Result<HashMap<&'static str, ChallengeParams>, String> {
     let chall_folder = get_chall_folder(chall_folder_path)?;
     
@@ -76,11 +80,15 @@ fn fetch_challenge_params(name: &str, chall_folder_path: Option<&str>) -> Result
     Ok(deploy_service_types)
 }
 
-/// Creates the k8s client to be used for all k8s-related functions. Generates registry_secret during creation of client as well.
+/// Creates the Kubernetes client to be used for all Kubernetes related functions. 
+/// 
+/// ## Returns
+/// - `Ok(Client)` - Kubernetes client
+/// - `Err(String)` - Error trace if error occurs
 pub async fn create_client() -> Result<Client, String> {
     match Client::try_default().await {
         Ok(client) => {
-            info!("Successfully connected to k8s");
+            info!("Successfully connected to Kubernetes");
             match generate_registry_secret(client.clone()).await {
                 Ok(_) => {
                     info!("Successfully created Docker registry secret");
@@ -88,14 +96,14 @@ pub async fn create_client() -> Result<Client, String> {
                 },
                 Err(err) => {
                     error!("Error creating registry secret");
-                    warn!("Ensure k8s cluster is running");
+                    warn!("Ensure Kubernetes cluster is running");
                     debug!("Trace: {:?}", err);
                     Err(err.to_string())
                 }
             }
         },
         Err(err) => {
-            error!("Error creating k8s client");
+            error!("Error creating Kubernetes client");
             debug!("Trace: {:?}", err);
             Err(err.to_string())
         }
@@ -119,11 +127,21 @@ pub async fn get_pods(client : Client) -> Result<ObjectList<Pod>, String> {
 // TODO --> Add support for admin bot stuff
 // TODO --> Return list of challenges with their respective addresses to access (look into load balancer ingresses and such)
 
-/// Sets up a full k8s deployment for every challenge in name_list. 
+/// Sets up a full Kubernetes deployment for every challenge in `name_list`. 
 /// 
-/// **chall_folder_path** is the base challenge directory where all challenges are contained in.
+/// `chall_folder_path` is the base challenge directory where all challenges are contained in.
 /// 
-/// Returns a vector of i32 with the corresponding port numbers of each challenge deployed.
+/// ## Parameters
+/// - `client` : `Client` 
+///     - Kubernetes client
+/// - `name_list` : `Vec<&str>`
+///     - List of challenge names to deploy
+/// - `chall_folder_path` - `Option<&str>`
+///     - Path to the base challenge directory, if `None`, defaults to environment variable `CHALL_FOLDER_PATH`
+/// 
+/// ## Returns
+/// - `Ok(Vec<i32>)` - Vector with all corresponding exposed port numbers of each challenge deployed
+/// - `Err(String)` - Error trace if error occurs
 pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_folder_path: Option<&str>) -> Result<Vec<i32>, String> {    
     let mut port_list = Vec::new();
     for name in name_list {
@@ -181,7 +199,16 @@ pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_fold
     Ok(port_list)
 }
 
-/// TODO --> Add a check to see if there is more than 1 replica, and if so, set up a loadBalancer for that chall instead of a nodePort
+// TODO --> Add a check to see if there is more than 1 replica, and if so, set up a loadBalancer for that chall instead of a nodePort
+
+/// Creates a Kubernetes [`Service`][Service] with name `<ChallengeName>-service` for a given challenge
+/// 
+/// This function serves mostly as a wrapper around [`create_schema_service`][create_schema_service], which generates the schema for the [`Service`][Service].
+/// If a service already exists, deletes the existing one and recreates it.
+/// 
+/// ## Returns
+/// - `Ok(Service)` - Kubernetes [`Service`][Service] object
+/// - `Err(String)` - Error trace if error occurs
 async fn create_service(client: Client, name : &str, chall_folder_path: Option<&str>) -> Result<Service, String> {
     let services: Api<Service> = Api::default_namespaced(client.clone());
     let service_name = format!("{}-service", name);
@@ -238,9 +265,13 @@ async fn create_service(client: Client, name : &str, chall_folder_path: Option<&
     }
 }
 
-/// Generates k8s secret that allows it to authenticate with docker registry to pull images
+/// Generates Kubernetes `Secret` that allows it to authenticate with the remote Docker registry to pull images
 /// 
-/// Secret name is currently **container-registry-credentials** and is stored in the default namespace
+/// Secret name generated is `container-registry-credentials` and is stored in the default namespace
+/// 
+/// ## Returns
+/// - `Ok(Secret)` - Kubernetes [`Secret`][Secret] object
+/// - `Err(String)` - Error trace if error occurs
 async fn generate_registry_secret(client: Client) -> Result<Secret, String>{
     info!("Generating remote Docker registry secret...");
     let secrets: Api<Secret> = Api::default_namespaced(client.clone());
@@ -308,7 +339,12 @@ async fn generate_registry_secret(client: Client) -> Result<Secret, String>{
     }
 }
 
-/// Generates service object (with name of service formatted as "name-service") for a given challenge
+// TODO - migrate schema to a separate file for organizational purposes
+/// Generates Service object with name `<ChallengeName>-service` from the current service schema for a given challenge
+/// 
+/// ## Returns 
+/// - `Ok(Service)` - Kubernetes [`Service`][Service] object
+/// - `Err(String)` - Error trace if error occurs
 async fn create_schema_service(name: &str, params: &ChallengeParams) -> Result<Service, String> {
     let service_name = format!("{}-service", name);
     match serde_json::from_value(serde_json::json!({
@@ -343,7 +379,14 @@ async fn create_schema_service(name: &str, params: &ChallengeParams) -> Result<S
     };
 }
 
-/// Generates deployment object for a given challenge
+// TODO - migrate schema to a separate file for organizational purposes
+/// Generates a Kubernetes [`Deployment`][Deployment] object for a given challenge
+/// 
+/// If a deployment already exists, it will be deleted and recreated
+/// 
+/// ## Returns
+/// - `Ok(Deployment)` - Kubernetes [`Deployment`][Deployment] object
+/// - `Err(String)` - Error trace if error occurs
 async fn create_deployment(client: Client, name: &str, chall_folder_path: Option<&str>) -> Result<Deployment, String> {
     let deployments: Api<Deployment> = Api::default_namespaced(client.clone());
 
@@ -403,6 +446,11 @@ async fn create_deployment(client: Client, name: &str, chall_folder_path: Option
     }
 }
 
+/// Generates a Kubernetes [`Deployment`][Deployment] object from the current deployment schema for a given challenge
+/// 
+/// ## Returns
+/// - `Ok(Deployment)` - Kubernetes [`Deployment`][Deployment] object
+/// - `Err(String)` - Error trace if error occurs
 fn create_schema_deployment(name: &str, chall_params: &ChallengeParams) -> Result<Deployment, String>{
     let registry_url = get_env("DOCKER_REGISTRY_URL")?;
 
@@ -485,7 +533,7 @@ pub async fn delete_service(client: Client, name : &str) -> Result<(), String> {
 }
 
 pub async fn delete_secret(client: Client, name : &str) -> Result<String, String> {
-    info!("Deleting k8s secret \"{}\"...", name);
+    info!("Deleting Kubernetes secret \"{}\"...", name);
     let secrets: Api<Secret> = Api::default_namespaced(client.clone());
     let status = match secrets.delete(name, &DeleteParams::default()).await {
         Ok(delete_status) => {
@@ -585,10 +633,12 @@ async fn secret_exists(client: Client, name : &str) -> Result<bool, Error> {
     }
 }
 
-/// Helper function to just simplify and clean up environment var fetching
+// TODO --> Improve environment var system
+/// Helper function to simplify environment var fetching
 /// 
-/// May want to create custom error types for this to improve error handling, not a big deal currently
-/// **TODO --> IMPROVE GLOBAL ENVIRONMENT SYSTEM**
+/// ## Returns
+/// - `Ok(String)` - Contents of the given environment variable with `env_name`
+/// - `Err(String)` - Error trace that occurred when trying to read the variable
 fn get_env(env_name: &str) -> Result<String, String> {
     match env::var(env_name) {
         Ok(val) => Ok(val.to_string()),
@@ -600,7 +650,13 @@ fn get_env(env_name: &str) -> Result<String, String> {
     }
 }
 
-/// Helper function to just simplify and clean up chall folder fetching
+/// Helper function to simplify fetching the base challenge folder
+/// 
+/// If no `chall_folder_path` specified, defaults the path to the `CHALL_FOLDER` environment variable
+/// 
+/// ## Returns
+/// - `Ok(String)` - Path to the challenge folder
+/// - `Err(String)` - Error trace that occurred when trying to get a folder path
 pub fn get_chall_folder(chall_folder_path: Option<&str>) -> Result<String, String> {
     match chall_folder_path {
         Some(chall_folder_path) => Ok(chall_folder_path.to_string()),
