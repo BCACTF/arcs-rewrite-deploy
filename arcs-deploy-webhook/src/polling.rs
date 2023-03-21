@@ -14,6 +14,15 @@ macro_rules! create_prefix {
     };
 }
 
+/// Enum that represents the different states an ongoing deployment can be in
+/// 
+/// This is specific to the deployment process
+/// 
+/// ## Variants
+/// - `Building` - The Docker image is in the process of being built
+/// - `Pushing` - The Docker image is being pushed to the remote registry
+/// - `Pulling` - The Docker image is being pulled from the remote registry
+/// - `Deploying` - The challenge is being deployed to the Kubernetes cluster
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeployStep {
     Building,
@@ -47,7 +56,15 @@ impl DeployStep {
     }
 }
 
-
+/// Enum that represents the main states a deployment can be in 
+/// 
+/// ## Variants
+/// - `InProgress` - The deployment is currently in progress
+///     - Returns the time that the deployment started and the current step in the process it is at
+/// - `Success` - The deployment was successful
+///     - Returns the ports that the challenge/challenges is/are running on and the time deployment finished
+/// - `Failure` - The deployment failed
+///     - Returns the error that caused the failure and the time that it occurred at
 #[derive(Debug, Clone)]
 pub enum DeploymentStatus {
     InProgress(Instant, DeployStep),
@@ -124,6 +141,17 @@ impl Serialize for DeploymentStatus {
 }
 
 
+/// Unique identifier that can be used to poll the status of a given deployment.
+/// 
+/// ## Fields
+/// - `chall_id` : [Uuid] 
+///     - The ID of the challenge that is being deployed
+/// - `race_lock_id`: [Uuid]
+///     - The ID of the request being made to deploy the challenge, prevents race conditions
+/// 
+/// ## Functions
+/// - `new`: Creates a new `PollingId` from the given `chall_id` and `race_lock_id`
+/// - `tup`: Returns a tuple of the `chall_id` and `race_lock_id`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PollingId {
     chall_id: Uuid,
@@ -156,6 +184,7 @@ lazy_static! {
     static ref CURRENT_DEPLOYMENTS: CHashMap<PollingId, DeploymentStatus> = CHashMap::new();
 }
 
+/// Registers a new deployment with the given `PollingId` and returns an error if the deployment is already in progress
 pub fn register_chall_deployment(id: PollingId) -> Result<(), DeploymentStatus> {
     if let Some(curr_status) = CURRENT_DEPLOYMENTS.get(&id) {
         Err(curr_status.clone())
@@ -165,6 +194,19 @@ pub fn register_chall_deployment(id: PollingId) -> Result<(), DeploymentStatus> 
     }
 }
 
+/// Struct that contains information regarding the current status of a deployment 
+/// 
+/// When the server receives a poll request with a given `PollingId`, it will return this `PollInfo` struct
+/// 
+/// ## Fields
+/// - `id`: [PollingId]
+///     - The ID of the deployment that is being polled
+/// - `status`: [DeploymentStatus]
+///     - The current status of the deployment
+/// - `poll_time`: [SystemTime]
+///     - The time that the poll request was made
+/// - `duration_since_last_change`: [Duration]
+///    - The duration since the last change in the deployment status
 #[derive(Debug, Clone, Serialize)]
 pub struct PollInfo {
     id: PollingId,
@@ -206,6 +248,7 @@ pub fn _update_deployment_state(id: PollingId, new_status: DeploymentStatus) -> 
     }
 }
 
+// FIXME - Does not correctly update deployment steps
 pub fn advance_deployment_step(id: PollingId, new_step: Option<DeployStep>) -> Result<DeploymentStatus, PollingId> {
     if let Some(status) = CURRENT_DEPLOYMENTS.get_mut(&id) {
         if let DeploymentStatus::InProgress(mut _time, mut _step) = *status {
@@ -221,6 +264,10 @@ pub fn advance_deployment_step(id: PollingId, new_step: Option<DeployStep>) -> R
     }
 }
 
+/// Marks a given `PollingId` as `DeploymentStatus::Failure`
+/// ## Returns
+/// - `Ok(DeploymentStatus)` : Returns the new `DeploymentStatus` if the `PollingId` was marked as successful
+/// - `Err(PollingId)` : Returns the `PollingId` if the given `PollingId` is already marked as finished
 pub fn fail_deployment(id: PollingId, response: Response) -> Result<DeploymentStatus, PollingId> {
     if let Some(mut status) = CURRENT_DEPLOYMENTS.get_mut(&id) {
         if !status.is_finished() {
@@ -234,6 +281,10 @@ pub fn fail_deployment(id: PollingId, response: Response) -> Result<DeploymentSt
     }
 }
 
+/// Marks a given `PollingId` as `DeploymentStatus::Success`
+/// ## Returns
+/// - `Ok(DeploymentStatus)` : Returns the new `DeploymentStatus` if the `PollingId` was marked as successful
+/// - `Err(PollingId)` : Returns the `PollingId` if the given `PollingId` is already marked as finished
 pub fn succeed_deployment(id: PollingId, response: Vec<i32>) -> Result<DeploymentStatus, PollingId> {
     if let Some(mut status) = CURRENT_DEPLOYMENTS.get_mut(&id) {
         if !status.is_finished() {
@@ -259,12 +310,7 @@ mod polling_id_deserialize {
     const FIELDS: &'static [&'static str] = &["chall_id", "deploy_race_lock_id"];
 
     enum PollingIdField { Chall, Race }
-    
-    // This part could also be generated independently by:
-    //
-    //    #[derive(Deserialize)]
-    //    #[serde(field_identifier, rename_all = "lowercase")]
-    //    enum Field { Secs, Nanos }
+
     impl<'de> Deserialize<'de> for PollingIdField {
         fn deserialize<D>(deserializer: D) -> Result<PollingIdField, D::Error>
         where

@@ -7,7 +7,6 @@ use actix_web::{ post, App, HttpServer, web, Responder };
 use arcs_deploy_docker::docker_login;
 use arcs_deploy_k8s::create_client;
 use kube::Client;
-// use arcs_deploy_k8s::delete_challenge;
 use serde::Deserialize;
 use shiplift::Docker;
 
@@ -16,15 +15,33 @@ use crate::receiver::{ delete_challenge, spawn_deploy_req };
 use crate::logging::*;
 use crate::polling::{ PollingId, poll_deployment };
 
+/// Struct that represents incoming post requests to the Deploy server
+/// 
+/// Every deploy struct uniquely identifies a deploy request that is being made to the server
+/// 
+/// ## Fields
+/// - `_type` - The type of request that is being made
+/// - `deploy_identifier` - The identifier of the deployment that is being made, formatted as: 
+/// ```
+///     chall_id.deploy_id
+///            OR 
+///     {
+///     'chall_name': Uuid,
+///     'deploy_id': Uuid
+///     }
+/// ```
+/// - `chall_name` - The name of the challenge that is being deployed
 #[derive(Deserialize)]
 pub struct Deploy {
     _type : String,
     deploy_identifier: PollingId,
     chall_name: String,
-
-    chall_meta: Option<String>
 }
 
+/// Generates a Docker and K8s client for use in the deploy server
+/// ## Returns
+/// - `Ok((Docker, Client))` - If both clients were successfully generated, with `Docker` being DockerClient and `Client` being K8sClient
+/// - `Err(Response)` - If either client failed to be generated
 async fn generate_clients(meta: Metadata) -> Result<(Docker, Client), Response> {
     let docker: Docker = match docker_login().await {
         Ok(docker) => docker,
@@ -39,6 +56,17 @@ async fn generate_clients(meta: Metadata) -> Result<(Docker, Client), Response> 
     Ok((docker, k8s))
 }
 
+/// The main entry point for the deploy server
+/// 
+/// All incoming requests pass through this, which calls the corresponding functions depending on the request type
+/// 
+/// ## Current Endpoints
+/// - `REDEPLOY` | `Deploy` - Fully deploys a challenge, or redeploys a challenge if it already exists
+/// - `DELETE` - Deletes a challenge from the cluster and removes local Docker image
+/// - `POLL` - Polls the status of a deployment
+/// 
+/// ## Returns
+///  - `actix_web::web::Json<Response>` - Returns a `actix_web::web::JSON` object returned by the endpoint that was requested. This JSON object ultimately gets sent out as a request response.
 #[post("/")]
 pub async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
     let meta: Metadata = From::from(&info.0);
@@ -47,12 +75,12 @@ pub async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
 
     match meta.endpoint_name().as_str() {
         "REDEPLOY" | "DEPLOY" => {
-            // Calls to this will be to redeploy/deploy a specific challenge
             let (docker, k8s) = match generate_clients(meta.clone()).await {
                 Ok((d, k)) => (d, k),
                 Err(resp) => return resp.wrap(),
             };
 
+            // spawns a Tokio task to handle the deployment of challenge, allows multiple requests to be handled at once
             match spawn_deploy_req(docker, k8s, meta) {
                 Ok(resp) => resp,
                 Err(resp) => resp,

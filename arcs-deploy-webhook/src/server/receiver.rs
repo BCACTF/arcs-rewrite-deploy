@@ -13,6 +13,14 @@ use crate::polling::{ PollingId, register_chall_deployment, fail_deployment, suc
 pub struct BuildChallengeErr(String);
 
 
+/// Enum that represents the different errors that can occur during the deploy process
+/// 
+/// ## Variants
+/// - `Build` - Error building Docker image
+/// - `Push` - Error pushing to remote Docker registry
+/// - `Pull` - Error pulling from remote Docker registry
+/// - `Fetch` - Error fetching local challenge folder
+/// - `Deploy` - Error deploying to Kubernetes cluster
 #[derive(Debug, Clone)]
 pub enum DeployProcessErr {
     Build(String),
@@ -82,6 +90,7 @@ pub async fn pull_challenge(docker: Docker, name: &String, polling_id: PollingId
 
 // may want to move the other two functions into this one and just call this when user asks for deploy/redeploy
 // response message is port challenge is running on (or if it's not running, No Port Returned)
+
 pub async fn deploy_challenge(
     docker: Docker,
     k8s: Client,
@@ -151,7 +160,7 @@ pub async fn delete_challenge(docker: Docker, client: Client, meta: Metadata) ->
 
 
 
-
+/// Convenience function that calls `advance_deployment_step` on an ongoing deployment and logs the result.
 pub fn advance_with_fail_log(polling_id: PollingId) -> bool {
     match advance_deployment_step(polling_id, None) {
         Ok(new_step) => {
@@ -165,6 +174,13 @@ pub fn advance_with_fail_log(polling_id: PollingId) -> bool {
     }
 }
 
+/// Registers a new deployment with the given polling id provided in `meta`
+/// 
+/// Spawns a Tokio task to handle the deployment of a challenge
+/// 
+/// ## Returns
+/// - `Ok(Response)` : Deployment was successfully registered, returns success registering message
+/// - `Err(Response)` : Deployment was not registered due to an error, error contains trace
 pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Result<Response, Response> {
     let polling_id = meta.poll_id();
     let name = meta.chall_name().clone();

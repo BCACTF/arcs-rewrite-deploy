@@ -5,28 +5,34 @@ use super::Deploy;
 
 #[derive(Debug, Copy, Clone, Serialize)]
 
-/// **200** - Success
-///  - 200 - Request received successfully
+/// ## Fields
+/// - `Code` : `u64`
+///     - Numeric code that is returned to the client
+/// - `Message` : `&'static str`
+///     - Status message that is returned to the client
 /// 
-/// **51X** - Client Login Failures
-/// - 510 - Docker Client Failure
-/// - 511 - K8s Client Failure
+/// ### 200 - Success
+///  - `200` - Request received successfully
 /// 
-/// **44X** - Polling ID Failures
-/// - 440 - Polling ID already exists
-/// - 441 - Polling ID has not been registered / invalid
+/// ### 40X - Endpoint Failures
+/// - `404` - Endpoint does not exist
 /// 
-/// **40X** - Endpoint Failures
-/// - 404 - Endpoint does not exist
-/// 
-/// **55X** - Server Deploy Process Failures (SERVER AT FAULT)
-/// - 550 + **subcode** - Server Deploy Process Failure
+/// ### 44X - Polling ID Failures
+/// - `440` - Polling ID already exists
+/// - `441` - Polling ID has not been registered / invalid
 ///
-/// **45X** - Request Deploy Process Failures (CLIENT AT FAULT)
-/// - 450 + **subcode** - Request Deploy Process Failure 
+/// ### 45X - Request Deploy Process Failures
+/// - `450` + **subcode** - Request Deploy Process Failure 
 /// 
-/// **50X** - Internal Server Error
-/// - 500 - Unknown Internal Server Error Occurred
+/// ### 50X - Internal Server Error
+/// - `500` - Unknown Internal Server Error Occurred
+/// 
+/// ### 51X - Client Login Failures
+/// - `510` - Docker Client Failure
+/// - `511` - K8s Client Failure
+/// 
+/// ### 55X - Server Deploy Process Failures 
+/// - `550` + **subcode** - Server Deploy Process Failure
 pub struct StatusCode { code: u64, message: &'static str }
 
 impl StatusCode {
@@ -62,6 +68,13 @@ impl StatusCode {
 }
 
 
+/// Struct that represents the data to be sent back in a response
+/// 
+/// ## Fields
+/// - `meta` - [Metadata]
+///     - Metadata that is sent back to the client
+/// - `internal_code` - [StatusCode]
+///     - Internal code that is sent back to the client, uses status codes defined in [StatusCode]
 #[derive(Debug, Clone, Serialize)]
 pub struct Response {
     pub meta: Metadata,
@@ -165,6 +178,7 @@ impl Response {
 }
 
 impl Response {
+    /// Convenience function that wraps the response in a `actix_web::web::Json` object to return to the client
     pub fn wrap(self) -> actix_web::web::Json<Self> {
         actix_web::web::Json(self)
     }
@@ -185,6 +199,13 @@ impl Response {
 }
 
 
+/// Struct that represents the data to be sent back in a response
+/// 
+/// ## Fields
+/// - `polling_id` - PollingId to uniquely identify request
+/// - `chall_name` - Challenge name that request pertained to
+/// - `endpoint_name` - Endpoint that the request was sent/forwarded to
+/// - `other_data` - `Option<serde_json::Value>` parameter that can be sent back to the client for additional information
 #[derive(Debug, Clone, Serialize)]
 pub struct Metadata {
     polling_id: PollingId,
