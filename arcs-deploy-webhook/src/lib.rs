@@ -1,5 +1,6 @@
 mod server;
 mod polling;
+mod auth;
 
 pub use crate::server::emitter;
 pub use crate::server::receiver;

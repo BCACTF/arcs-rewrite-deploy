@@ -2,9 +2,6 @@ pub mod emitter;
 pub mod receiver;
 pub mod responses;
 
-use lazy_static::lazy_static;
-
-use actix_web::dev::ServiceRequest;
 use responses::{ Response, Metadata };
 use actix_web::{ post, App, HttpServer, web, Responder };
 use arcs_deploy_docker::docker_login;
@@ -13,16 +10,15 @@ use kube::Client;
 use serde::Deserialize;
 use shiplift::Docker;
 
+use crate::auth::validate_auth_token;
 use crate::receiver::{ delete_challenge, spawn_deploy_req };
 
 use crate::logging::*;
 use crate::polling::{ PollingId, poll_deployment };
 
-use constant_time_eq::{ constant_time_eq_32 };
-use actix_web_httpauth::extractors::bearer::{BearerAuth, Config, Error};
-use actix_web_httpauth::extractors::AuthenticationError;
-use actix_web_httpauth::middleware::HttpAuthentication;
 
+
+use actix_web_httpauth::middleware::HttpAuthentication;
 
 /// Struct that represents incoming post requests to the Deploy server
 /// 
@@ -114,54 +110,6 @@ async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
             Response::endpoint_err(&info._type, meta).wrap()
         },
     }
-}
-
-lazy_static! {
-    static ref WEBHOOK_SERVER_TOKEN: String = std::env::var("WEBHOOK_SERVER_AUTH_TOKEN").expect("WEBHOOK_SERVER_TOKEN must be set");
-    // parsed into a [u8;32] for constant time comparison
-    static ref WEBHOOKARR : [u8;32]= match (&WEBHOOK_SERVER_TOKEN.as_bytes().to_owned()[..]).try_into() {
-        Ok(arr) => arr,
-        Err(e) => {
-            error!("Error converting from slice to [u8;32]");
-            error!("{:?}", e);
-            panic!("Failed to convert WEBHOOK_SERVER_AUTH_TOKEN to [u8;32]");
-        },
-    };
-}
-
-// todo - potentially switch over to jwt? or hmac?
-/// Function to validate the authentication token of a request
-/// 
-/// Reads in from the `Authentication` header of the request
-/// 
-/// ## Returns
-/// - `Ok(ServiceRequest)` - If the token is valid
-/// - `Err((actix_web::Error, ServiceRequest))` - If the token is invalid : short circuits request and returns status to client
-async fn validate_auth_token (
-    req: ServiceRequest,
-    credentials: BearerAuth,
-) -> Result<ServiceRequest, (actix_web::Error, ServiceRequest)> {
-
-    let config = req
-        .app_data::<Config>()
-        .map(|data| data.clone())
-        .unwrap_or_else(Default::default);
-
-    let credarr : [u8;32]= match (&credentials.token().as_bytes().to_owned()[..]).try_into() {
-        Ok(arr) => arr,
-        Err(e) => {
-            error!("Error converting from slice to [u8;32]");
-            error!("{:?}", e);
-            return Err((AuthenticationError::from(config).with_error(Error::InvalidToken).into(), req))
-        },
-    };
-
-    if constant_time_eq_32(&credarr, &WEBHOOKARR) {
-        return Ok(req);
-    }
-
-    error!("Unauthenticated request received");
-    Err((AuthenticationError::from(config).with_error(Error::InvalidToken).into(), req))
 }
 
 pub async fn initialize_server() -> std::io::Result<()> {

@@ -15,8 +15,6 @@ use super::Deploy;
 ///  - `200` - Request received successfully
 /// 
 /// ### 40X - Endpoint Failures
-/// - `401` - Request was not authenticated, mismatched tokens, client error
-/// - `402` - Request failed to authenticate, server error
 /// - `404` - Endpoint does not exist
 /// 
 /// ### 44X - Polling ID Failures
@@ -41,8 +39,6 @@ impl StatusCode {
     pub const SUCCESS: Self = StatusCode { code: 200, message: "Request received successfully" };
     
     // endpoint failures
-    pub const UNAUTHENTICATED: Self = StatusCode { code: 401, message: "Unauthorized request" };
-    pub const AUTHENTICATION_FAILURE: Self = StatusCode { code: 402, message: "Server failed to authorize request" };
     pub const ENDPOINT_NO_EXIST_ERR: Self = StatusCode { code: 404, message: "Endpoint is not set up on the server" };
 
     // polling failures
@@ -84,7 +80,6 @@ pub struct Response {
     pub meta: Metadata,
     pub internal_code: StatusCode,
 }
-
 
 // 200 success
 impl Response {
@@ -201,33 +196,6 @@ impl Response {
         }
     }
 }
-
-//  /// Use when the server runs into an invalid bearer token
-//  pub fn server_authentication_rejection(err: String, meta: Metadata) -> Self {
-//     Self {
-//         meta: Metadata {
-//             other_data: Some(json!({
-//                 "authorization_rejected": err,
-//             })),
-//             ..meta
-//         }, 
-//         internal_code: StatusCode::UNAUTHENTICATED,
-//     }
-// }
-
-// /// Use when the server runs into an issue checking the bearer token
-// pub fn server_authentication_failure(err: String, meta: Metadata) -> Self {
-//     Self {
-//         meta: Metadata {
-//             other_data: Some(json!({
-//                 "authentication_failure": err,
-//             })),
-//             ..meta
-//         }, 
-//         internal_code: StatusCode::AUTHENTICATION_FAILURE,
-//     }
-// }
-
 
 /// Struct that represents the data to be sent back in a response
 /// 
