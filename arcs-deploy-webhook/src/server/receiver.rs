@@ -6,6 +6,7 @@ use shiplift::Docker;
 use super::responses::{ Metadata, Response, StatusCode };
 use serde_json::json;
 
+use crate::emitter::send_deployment_success;
 use crate::logging::*;
 use crate::polling::{ PollingId, register_chall_deployment, fail_deployment, succeed_deployment, advance_deployment_step };
 
@@ -212,12 +213,13 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
         }
         if !advance_with_fail_log(polling_id) { return; }
 
-       match deploy_challenge(docker.clone(), client.clone(), &name, None, polling_id).await {
-            Ok(response) => {
-                info!("Successfully deployed `{name}` ({polling_id}) to port(s): {response:?}");
-                if let Err(_) = succeed_deployment(polling_id, response) {
+       let ports = match deploy_challenge(docker.clone(), client.clone(), &name, None, polling_id).await {
+            Ok(ports) => {
+                info!("Successfully deployed `{name}` ({polling_id}) to port(s): {:?}", &ports);
+                if let Err(_) = succeed_deployment(polling_id, &ports) {
                     error!("`succeed_deployment` failed to mark polling id {polling_id} as succeeded");
                 }
+                ports
             },
             Err(deploy_err) => {
                 error!("Failed to deploy `{name}` ({polling_id}) with err {deploy_err:?}");
@@ -226,9 +228,12 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
                 }
                 return;
             }
-        }
+        };
 
-        
+        match send_deployment_success(polling_id, ports).await {
+            Ok(_) => info!("Successfully sent deployment success message for {polling_id}"),
+            Err(e) => error!("Failed to send deployment success message for {polling_id}: {e:?}"),
+        };
     });
 
     Ok(Response::success(

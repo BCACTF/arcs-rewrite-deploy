@@ -284,10 +284,10 @@ pub fn fail_deployment(id: PollingId, response: Response) -> Result<DeploymentSt
 /// ## Returns
 /// - `Ok(DeploymentStatus)` : Returns the new `DeploymentStatus` if the `PollingId` was marked as successful
 /// - `Err(PollingId)` : Returns the `PollingId` if the given `PollingId` is already marked as finished
-pub fn succeed_deployment(id: PollingId, response: Vec<i32>) -> Result<DeploymentStatus, PollingId> {
+pub fn succeed_deployment(id: PollingId, response: &Vec<i32>) -> Result<DeploymentStatus, PollingId> {
     if let Some(mut status) = CURRENT_DEPLOYMENTS.get_mut(&id) {
         if !status.is_finished() {
-            *status = DeploymentStatus::Success(Instant::now(), response);
+            *status = DeploymentStatus::Success(Instant::now(), response.to_vec());
             Ok(status.clone())
         } else {
             Err(id)
