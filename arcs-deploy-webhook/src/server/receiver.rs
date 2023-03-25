@@ -6,7 +6,7 @@ use shiplift::Docker;
 use super::responses::{ Metadata, Response, StatusCode };
 use serde_json::json;
 
-use crate::emitter::send_deployment_success;
+use crate::emitter::{send_deployment_success, send_deployment_failure};
 use crate::logging::*;
 use crate::polling::{ PollingId, register_chall_deployment, fail_deployment, succeed_deployment, advance_deployment_step };
 
@@ -196,9 +196,10 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
         let meta = spawn_meta;
         if let Err(build_err) = build_challenge(docker.clone(), &name, polling_id).await {
             error!("Failed to build `{name}` ({polling_id}) with err {build_err:?}");
-            if let Err(_) = fail_deployment(polling_id, (build_err, meta).into()) {
+            if let Err(_) = fail_deployment(polling_id, (build_err, meta.clone()).into()) {
                 error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
             }
+            send_failure_message(&meta, "Build").await;
             return;
         }
         if !advance_with_fail_log(polling_id) { return; }
@@ -206,9 +207,10 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
     
         if let Err(push_err) = push_challenge(docker.clone(), &name, polling_id).await {
             error!("Failed to push `{name}` ({polling_id}) with err {push_err:?}");
-            if let Err(_) = fail_deployment(polling_id, (push_err, meta).into()) {
+            if let Err(_) = fail_deployment(polling_id, (push_err, meta.clone()).into()) {
                 error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
             }
+            send_failure_message(&meta, "Push").await;
             return;
         }
         if !advance_with_fail_log(polling_id) { return; }
@@ -223,9 +225,10 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
             },
             Err(deploy_err) => {
                 error!("Failed to deploy `{name}` ({polling_id}) with err {deploy_err:?}");
-                if let Err(_) = fail_deployment(polling_id, (deploy_err, meta).into()) {
+                if let Err(_) = fail_deployment(polling_id, (deploy_err, meta.clone()).into()) {
                     error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
                 }
+                send_failure_message(&meta, "Deploy").await;
                 return;
             }
         };
@@ -245,3 +248,9 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
     ))
 }
 
+async fn send_failure_message(meta: &Metadata, message: &str) {
+    match send_deployment_failure(&meta, format!("Failed to deploy {}: {} Error", meta.chall_name(), message)).await {
+        Ok(_) => info!("Successfully sent deployment failure message for {} ({})", meta.chall_name(), meta.poll_id()),
+        Err(e) => error!("Failed to send deployment failure message for {} ({}): {e:?}", meta.chall_name(), meta.poll_id()),
+    };
+}
