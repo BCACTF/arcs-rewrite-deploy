@@ -23,6 +23,7 @@ use logging::*;
 // CHECK OUT LOAD BALANCING (not priority)
 // Right now, if it tries creating a deployment but does not have image locally, it doesn't say anything - not a huge deal since pulling will throw problem
 
+// todo --> fix error propagation, make them return not strings and an actual error type 
 /// Retrieves challenge parameters for a given challenge, given a name and containing folder
 /// 
 /// ## Returns

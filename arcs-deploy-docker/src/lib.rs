@@ -81,6 +81,7 @@ pub async fn retrieve_containers(docker: &Docker) -> Result <Vec<ContainerInfo>,
     }
 }
 
+// todo --> fix error propagation, make them return not strings and an actual error type 
 /// Builds a Docker image from the Dockerfile contained in the folder with a given `chall_name`
 /// 
 /// Currently assumes Dockerfile is in the root of the challenge folder provided

@@ -4,10 +4,10 @@ use actix_web::body::BoxBody;
 use actix_web::{ResponseError, HttpResponse};
 use lazy_static::lazy_static;
 
-use constant_time_eq::{ constant_time_eq_32 };
+use constant_time_eq::constant_time_eq_32;
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use actix_web::dev::ServiceRequest;
-use actix_web::http::{StatusCode as actixStatusCode};
+use actix_web::http::StatusCode as actixStatusCode;
 use crate::logging::*;
 
 #[derive(Debug)]
@@ -18,7 +18,7 @@ struct Authentication {
 
 impl Display for Authentication{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Authentication Error: {{message: {}; status_code: {}}}", self.message, self.status_code)
+        write!(f, "Authentication Error: {{status_code: {}; message: {}}}", self.message, self.status_code)
     }
 }
 

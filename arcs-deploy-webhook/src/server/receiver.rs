@@ -230,9 +230,9 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
             }
         };
 
-        match send_deployment_success(polling_id, ports).await {
-            Ok(_) => info!("Successfully sent deployment success message for {polling_id}"),
-            Err(e) => error!("Failed to send deployment success message for {polling_id}: {e:?}"),
+        match send_deployment_success(&meta, ports).await {
+            Ok(_) => info!("Successfully sent deployment success message for {} ({})", meta.chall_name(), polling_id),
+            Err(e) => error!("Failed to send deployment success message for {} ({}): {e:?}", meta.chall_name(), polling_id),
         };
     });
 
