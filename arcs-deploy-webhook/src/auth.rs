@@ -79,5 +79,5 @@ pub async fn validate_auth_token (
     }
 
     warn!("Unauthenticated request received");
-    return Err((Authentication::INVALID_TOKEN.into(), req))
+    Err((Authentication::INVALID_TOKEN.into(), req))
 }

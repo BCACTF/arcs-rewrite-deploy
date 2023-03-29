@@ -3,7 +3,7 @@ use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_ch
 
 use kube::{Client};
 use shiplift::Docker;
-use super::responses::{ Metadata, Response, StatusCode };
+use super::responses::{ Metadata, Response };
 use serde_json::json;
 
 use crate::emitter::{send_deployment_success, send_deployment_failure};
@@ -107,7 +107,7 @@ pub async fn deploy_challenge(
     
     match create_full_k8s_deployment(k8s, vec![name], Some(&chall_folder)).await {
         Ok(ports) => {
-            if ports.len() <= 0 { 
+            if ports.is_empty() { 
                 error!("Error deploying {} ({polling_id}) to k8s cluster", name);
                 error!("No Port Returned");
 
@@ -131,6 +131,7 @@ pub async fn delete_challenge(docker: Docker, client: Client, meta: Metadata) ->
     
     warn!("Deleting {}...", name);
 
+    // TODO: Use the variables! (better logs please)
     match delete_k8s_challenge(client, vec![name.as_str()]).await {
         Ok(_) => {
             info!("Successfully deleted {} from Kubernetes cluster", name);
@@ -139,17 +140,19 @@ pub async fn delete_challenge(docker: Docker, client: Client, meta: Metadata) ->
         Err(e) => {
             error!("Error deleting {} from Kubernetes cluster", name);
             error!("Trace: {}", e);
-            return Response::custom(meta, StatusCode::custom(1234, "Error deleting k8s deployment/service"));
+            return Response::k8s_service_deploy_del_err(e, meta); 
         } 
     };
 
+    // TODO: Use the variables! (better logs please)
+    #[allow(unused_variables)]
     match delete_docker_image(&docker, name).await {
-        Ok(_) => {
+        Ok(v) => {
             info!("Successfully deleted {} from Docker", name);
             "Success deleting Docker image".to_string()
         },
         Err(e) => {
-            return Response::custom(meta, StatusCode::custom(1235, "Error deleting Docker image"));
+            return Response::docker_img_del_err(e, meta);
         } 
     };
 
@@ -196,7 +199,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
         let meta = spawn_meta;
         if let Err(build_err) = build_challenge(docker.clone(), &name, polling_id).await {
             error!("Failed to build `{name}` ({polling_id}) with err {build_err:?}");
-            if let Err(_) = fail_deployment(polling_id, (build_err, meta.clone()).into()) {
+            if fail_deployment(polling_id, (build_err, meta.clone()).into()).is_err() {
                 error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
             }
             send_failure_message(&meta, "Build").await;
@@ -207,7 +210,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
     
         if let Err(push_err) = push_challenge(docker.clone(), &name, polling_id).await {
             error!("Failed to push `{name}` ({polling_id}) with err {push_err:?}");
-            if let Err(_) = fail_deployment(polling_id, (push_err, meta.clone()).into()) {
+            if fail_deployment(polling_id, (push_err, meta.clone()).into()).is_err() {
                 error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
             }
             send_failure_message(&meta, "Push").await;
@@ -218,14 +221,14 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
        let ports = match deploy_challenge(docker.clone(), client.clone(), &name, None, polling_id).await {
             Ok(ports) => {
                 info!("Successfully deployed `{name}` ({polling_id}) to port(s): {:?}", &ports);
-                if let Err(_) = succeed_deployment(polling_id, &ports) {
+                if succeed_deployment(polling_id, &ports).is_err() {
                     error!("`succeed_deployment` failed to mark polling id {polling_id} as succeeded");
                 }
                 ports
             },
             Err(deploy_err) => {
                 error!("Failed to deploy `{name}` ({polling_id}) with err {deploy_err:?}");
-                if let Err(_) = fail_deployment(polling_id, (deploy_err, meta.clone()).into()) {
+                if fail_deployment(polling_id, (deploy_err, meta.clone()).into()).is_err() {
                     error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
                 }
                 send_failure_message(&meta, "Deploy").await;
@@ -249,7 +252,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
 }
 
 async fn send_failure_message(meta: &Metadata, message: &str) {
-    match send_deployment_failure(&meta, format!("Failed to deploy {}: {} Error", meta.chall_name(), message)).await {
+    match send_deployment_failure(meta, format!("Failed to deploy {}: {} Error", meta.chall_name(), message)).await {
         Ok(_) => info!("Successfully sent deployment failure message for {} ({})", meta.chall_name(), meta.poll_id()),
         Err(e) => error!("Failed to send deployment failure message for {} ({}): {e:?}", meta.chall_name(), meta.poll_id()),
     };

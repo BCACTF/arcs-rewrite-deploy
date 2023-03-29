@@ -1,6 +1,6 @@
 use reqwest::Client;
 
-use crate::{logging::*, receiver::DeployProcessErr};
+use crate::logging::*;
 
 use serde_json::json;
 
@@ -51,7 +51,7 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Vec<i32>) -> Result
     match response {
         Ok(resp) => {
             if resp.status().is_success() {
-                return Ok(());
+                Ok(())
             } else {
                 error!("Error sending DeploymentSuccess message to webhook server : Bad status code returned");
                 error!("Trace: {:#?}", resp);
@@ -60,13 +60,13 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Vec<i32>) -> Result
                     warn!("Webhook server returned 401 Unauthorized. Check that the DEPLOY_SERVER_AUTH_TOKEN is correct");
                 }
 
-                return Err(format!("Error sending DeploymentSuccess message to webhook server"));
+                Err("Error sending DeploymentSuccess message to webhook server".to_string())
             }
         },
         Err(err) => {
             error!("Error sending DeploymentSuccess message to webhook server");
             error!("Trace: {:#?}", err);
-            return Err(format!("Error sending DeploymentSuccess message to webhook server"));
+            Err("Error sending DeploymentSuccess message to webhook server".to_string())
 
         }
     }
@@ -104,7 +104,7 @@ pub async fn send_deployment_failure(meta: &Metadata, err: String) -> Result<(),
     match response {
         Ok(resp) => {
             if resp.status().is_success() {
-                return Ok(());
+                Ok(())
             } else {
                 error!("Error sending DeploymentFailure message to webhook server : Bad status code returned");
                 error!("Trace: {:#?}", resp);
@@ -113,13 +113,13 @@ pub async fn send_deployment_failure(meta: &Metadata, err: String) -> Result<(),
                     warn!("Webhook server returned 401 Unauthorized. Check that the DEPLOY_SERVER_AUTH_TOKEN is correct");
                 }
 
-                return Err(format!("Error sending DeploymentFailure message to webhook server"));
+                Err("Error sending DeploymentFailure message to webhook server".to_string())
             }
         },
         Err(err) => {
             error!("Error sending DeploymentFailure message to webhook server");
             error!("Trace: {:#?}", err);
-            return Err(format!("Error sending DeploymentFailure message to webhook server"));
+            Err("Error sending DeploymentFailure message to webhook server".to_string())
         }
     }
 }

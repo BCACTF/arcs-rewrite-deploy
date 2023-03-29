@@ -2,8 +2,12 @@ use serde::Serialize;
 use serde_json::{ json, Value };
 use crate::polling::{ PollingId, DeploymentStatus };
 use super::Deploy;
+use std::borrow::Cow;
 
-#[derive(Debug, Copy, Clone, Serialize)]
+
+
+
+const fn cowify(s: &'static str) -> Cow<'static, str> { Cow::Borrowed(s) }
 
 /// ## Fields
 /// - `Code` : `u64`
@@ -29,41 +33,51 @@ use super::Deploy;
 /// 
 /// ### 51X - Client Login Failures
 /// - `510` - Docker Client Failure
-/// - `511` - K8s Client Failure
+/// - `511` - k8s Client Failure
 /// 
 /// ### 55X - Server Deploy Process Failures 
 /// - `550` + **subcode** - Server Deploy Process Failure
-pub struct StatusCode { code: u64, message: &'static str }
+/// 
+/// ### 580 - Server Delete Failures
+/// - `580` - Kubernetes Service/Deployment Deletion Failure
+/// - `581` - Docker Image Deletion Failure 
+#[derive(Debug, Clone, Serialize)]
+pub struct StatusCode { code: u64, message: Cow<'static, str> }
 
 impl StatusCode {
-    pub const SUCCESS: Self = StatusCode { code: 200, message: "Request received successfully" };
+    pub const SUCCESS: Self = StatusCode { code: 200, message: cowify("Request received successfully") };
     
     // endpoint failures
-    pub const ENDPOINT_NO_EXIST_ERR: Self = StatusCode { code: 404, message: "Endpoint is not set up on the server" };
+    pub const ENDPOINT_NO_EXIST_ERR: Self = StatusCode { code: 404, message: cowify("Endpoint is not set up on the server") };
 
     // polling failures
-    pub const POLLID_ALREADY_EXISTS_ERR: Self = StatusCode { code: 440, message: "Polling ID already exists" };
-    pub const POLLID_INVAL_NOEXISTS_ERR: Self = StatusCode { code: 441, message: "Polling ID is unregistered" };
+    pub const POLLID_ALREADY_EXISTS_ERR: Self = StatusCode { code: 440, message: cowify("Polling ID already exists") };
+    pub const POLLID_INVAL_NOEXISTS_ERR: Self = StatusCode { code: 441, message: cowify("Polling ID is unregistered") };
     
     // client login failures
-    pub const DOCKER_LOGIN_ERR: Self = StatusCode { code: 510, message: "Failure initializing Docker client" };
-    pub const K8SCLI_LOGIN_ERR: Self = StatusCode { code: 511, message: "Failure initializing Kubernetes client" };
+    pub const DOCKER_LOGIN_ERR: Self = StatusCode { code: 510, message: cowify("Failure initializing Docker client") };
+    pub const K8SCLI_LOGIN_ERR: Self = StatusCode { code: 511, message: cowify("Failure initializing Kubernetes client") };
 
-    pub const UNKNOWN_ISE: Self = StatusCode { code: 500, message: "Unknown internal server error" };
+    // Internal Server Errors
+    pub const UNKNOWN_ISE: Self = StatusCode { code: 500, message: cowify("Unknown internal server error") };
+
+    // deletion errors
+    pub const K8S_SERVICE_DEPLOY_DEL_ERR: Self = StatusCode { code: 580, message: cowify("Failure deleting Kubernetes resources") };
+    pub const DOCKER_IMG_DEL_ERR: Self = StatusCode { code: 580, message: cowify("Failure deleting Docker image") };
 
     // deploy process failures
     pub fn server_deploy_process_err(subcode: u64, message: &'static str) -> Self {
-        Self { code: 550 + subcode, message }
+        Self { code: 550 + subcode, message: message.into() }
     }
 
     // deploy process failures
     pub fn req_deploy_process_err(subcode: u64, message: &'static str) -> Self {
-        Self { code: 450 + subcode, message }
+        Self { code: 450 + subcode, message: message.into() }
     }
 
-    // deploy process failures
+    // custom failure
     pub fn custom(code: u64, message: &'static str) -> Self {
-        Self { code, message }
+        Self { code, message: message.into() }
     }
 }
 
@@ -142,7 +156,7 @@ impl Response {
         Self {
             meta: Metadata {
                 other_data: Some(json!({
-                    "docker_error": err,
+                    "err": err,
                 })),
                 ..meta
             }, 
@@ -154,7 +168,7 @@ impl Response {
         Self {
             meta: Metadata {
                 other_data: Some(json!({
-                    "k8s_error": err,
+                    "err": err,
                 })),
                 ..meta
             }, 
@@ -172,6 +186,28 @@ impl Response {
                 ..meta
             }, 
             internal_code: StatusCode::server_deploy_process_err(subcode, message),
+        }
+    }
+}
+
+// 580 endpoints
+impl Response {
+    pub fn k8s_service_deploy_del_err(other_data: impl serde::Serialize, meta: Metadata) -> Self {
+        Self {
+            meta: Metadata {
+                other_data: Some(json!({ "err": other_data })),
+                ..meta
+            }, 
+            internal_code: StatusCode::K8S_SERVICE_DEPLOY_DEL_ERR,
+        }
+    }
+    pub fn docker_img_del_err(other_data: impl serde::Serialize, meta: Metadata) -> Self {
+        Self {
+            meta: Metadata {
+                other_data: Some(json!({ "err": other_data })),
+                ..meta
+            }, 
+            internal_code: StatusCode::DOCKER_IMG_DEL_ERR,
         }
     }
 }
