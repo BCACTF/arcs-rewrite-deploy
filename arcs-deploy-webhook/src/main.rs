@@ -13,7 +13,7 @@ async fn main() -> IOResult<()> {
 
     dotenv().ok(); // load env vars
 
-    env::var("DEPLOY_SERVER_AUTH_TOKEN").expect("DEPLOY_SERVER__AUTH_TOKEN must be set");
+    env::var("DEPLOY_SERVER_AUTH_TOKEN").expect("DEPLOY_SERVER_AUTH_TOKEN must be set");
     env::var("WEBHOOK_SERVER_AUTH_TOKEN").expect("WEBHOOK_SERVER_AUTH_TOKEN must be set");
 
     set_up_logging(&DEFAULT_LOGGGING_TARGETS, logging::DEFAULT_TARGET_NAME)?;
