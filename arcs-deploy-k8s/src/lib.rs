@@ -1,10 +1,13 @@
+use env::chall_folder_default;
 use k8s_openapi::{api::{core::v1::{Pod, Service, Secret}, 
                   apps::v1::Deployment}};
 use kube::{Client, Api, Error, 
            core::{ObjectList},
            api::{ListParams, PostParams, DeleteParams}};
-use std::{fs::{File}, io::Read, path::PathBuf, collections::{HashMap}, env};
+use std::{fs::{File}, io::Read, path::PathBuf, collections::{HashMap}};
 pub mod network_protocol;
+mod env;
+
 use network_protocol::*;
 
 #[allow(unused_macros)]
@@ -14,6 +17,8 @@ pub mod logging {
 }
 
 use logging::*;
+
+use crate::env::{reg_username, reg_password, reg_url};
 
 // BIG TODOS --> 
 // GET RID OF CHALL FOLDER PATH REFERENCES, MIGRATE TO ENV VAR - DONE
@@ -30,7 +35,7 @@ use logging::*;
 /// - `Ok(HashMap<&'static str, ChallengeParams>)` - HashMap of challenge names to challenge parameters for each service type
 /// - `Err(String)` - Error trace if error occurs
 fn fetch_challenge_params(name: &str, chall_folder_path: Option<&str>) -> Result<HashMap<&'static str, ChallengeParams>, String> {
-    let chall_folder = get_chall_folder(chall_folder_path)?;
+    let chall_folder = get_chall_folder(chall_folder_path);
     
     let mut yaml_path = PathBuf::from(chall_folder);
     yaml_path.push(name);
@@ -296,9 +301,12 @@ async fn generate_registry_secret(client: Client) -> Result<Secret, String>{
         }
     };
 
-    let registry_username = get_env("DOCKER_REGISTRY_USERNAME")?;
-    let registry_password = get_env("DOCKER_REGISTRY_PASSWORD")?;
-    let registry_url = get_env("DOCKER_REGISTRY_URL")?;
+    let registry_username = reg_username();
+    let registry_password = reg_password();
+    let registry_url = reg_url();
+    // let registry_username = get_env("DOCKER_REGISTRY_USERNAME")?;
+    // let registry_password = get_env("DOCKER_REGISTRY_PASSWORD")?;
+    // let registry_url = get_env("DOCKER_REGISTRY_URL")?;
 
     let encoded = base64::encode(format!("{}:{}", registry_username, registry_password));
 
@@ -453,7 +461,7 @@ async fn create_deployment(client: Client, name: &str, chall_folder_path: Option
 /// - `Ok(Deployment)` - Kubernetes [`Deployment`][Deployment] object
 /// - `Err(String)` - Error trace if error occurs
 fn create_schema_deployment(name: &str, chall_params: &ChallengeParams) -> Result<Deployment, String>{
-    let registry_url = get_env("DOCKER_REGISTRY_URL")?;
+    let registry_url = reg_url();
 
     let mut path_on_registry = PathBuf::new();
             path_on_registry.push(registry_url);
@@ -640,16 +648,16 @@ async fn secret_exists(client: Client, name : &str) -> Result<bool, Error> {
 /// ## Returns
 /// - `Ok(String)` - Contents of the given environment variable with `env_name`
 /// - `Err(String)` - Error trace that occurred when trying to read the variable
-fn get_env(env_name: &str) -> Result<String, String> {
-    match env::var(env_name) {
-        Ok(val) => Ok(val.to_string()),
-        Err(e) => {
-            error!("Error reading \"{}\" env var", env_name);
-            debug!("Trace: {:?}", e);
-            return Err(e.to_string());
-        }
-    }
-}
+// fn get_env(env_name: &str) -> Result<String, String> {
+//     match env::var(env_name) {
+//         Ok(val) => Ok(val.to_string()),
+//         Err(e) => {
+//             error!("Error reading \"{}\" env var", env_name);
+//             debug!("Trace: {:?}", e);
+//             return Err(e.to_string());
+//         }
+//     }
+// }
 
 /// Helper function to simplify fetching the base challenge folder
 /// 
@@ -658,18 +666,23 @@ fn get_env(env_name: &str) -> Result<String, String> {
 /// ## Returns
 /// - `Ok(String)` - Path to the challenge folder
 /// - `Err(String)` - Error trace that occurred when trying to get a folder path
-pub fn get_chall_folder(chall_folder_path: Option<&str>) -> Result<String, String> {
-    match chall_folder_path {
-        Some(chall_folder_path) => Ok(chall_folder_path.to_string()),
-        None => {
-            match get_env("CHALL_FOLDER") {
-                Ok(path) => Ok(path.to_string()),
-                Err(e) => {
-                    error!("Error getting challenge folder path");
-                    info!("Trace: {:?}", e);
-                    Err(e.to_string())
-                }
-            }
-        }
-    }
+pub fn get_chall_folder(chall_folder_path: Option<&str>) -> String {
+    if let Some(path) = chall_folder_path {
+        path
+    } else {
+        debug!("Using default chall folder");
+        chall_folder_default()
+    }.to_string()
+    // match chall_folder_path {
+    //     Some(chall_folder_path) => Ok(chall_folder_path.to_string()),
+    //     None => chall_folder_default() {
+    //             Ok(path) => Ok(path.to_string()),
+    //             Err(e) => {
+    //                 error!("Error getting challenge folder path");
+    //                 info!("Trace: {:?}", e);
+    //                 Err(e.to_string())
+    //             }
+    //         }
+    //     }
+    // }
 }

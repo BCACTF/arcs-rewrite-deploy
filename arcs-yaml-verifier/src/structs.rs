@@ -5,11 +5,15 @@ use serde_yaml::Error as YamlError;
 use serde_yaml::Value as YamlValue;
 
 use crate::categories::CategoryError;
+use crate::correctness::YamlCorrectness;
+use crate::flag::FlagError;
+use crate::lists::structs::AuthorError;
+use crate::lists::structs::HintError;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct ValueType { type_enum: ValueTypeEnum }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum ValueTypeEnum { Null, Bool, Number, String, Sequence, Mapping, Tagged }
 pub fn get_type(value: &YamlValue) -> ValueType {
     use YamlValue::*;
@@ -58,12 +62,17 @@ impl Display for ValueType {
 #[derive(Debug, Clone)]
 pub enum YamlAttribVerifyError {
     Categories(CategoryError),
+    Authors(AuthorError),
+    Hints(HintError),
+    Flag(FlagError),
 
     NameNotString(ValueType),
     PointsNotInt(ValueType),
 
     DescNotString(ValueType),
     VisNotBool(ValueType),
+
+    Correctness(YamlCorrectness),
 }
 
 #[derive(Debug)]
@@ -84,7 +93,12 @@ impl Display for YamlAttribVerifyError {
             PointsNotInt(ValueType { type_enum: ValueTypeEnum::Number }) => writeln!(f, "The value should be an positive integer, not negative or fractional."),
             PointsNotInt(vtype)  => writeln!(f, "The value should be an positive integer, not {vtype}."),
             
+            Flag(flag_err) => writeln!(f, "{flag_err}"),
             Categories(cat_err) => writeln!(f, "{cat_err}"),
+            Authors(author_err) => writeln!(f, "{author_err}"),
+            Hints(hint_err) => writeln!(f, "{hint_err}"),
+
+            Correctness(correctness) => writeln!(f, "{correctness}"),
         }
     }
 }

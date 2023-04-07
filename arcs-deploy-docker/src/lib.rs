@@ -1,9 +1,9 @@
 use dotenv::dotenv;
+use env::chall_folder_default;
 use shiplift::container::ContainerInfo;
 use shiplift::image::ImageBuildChunk;
 use std::borrow::Borrow;
 use std::fs::{self, read_dir};
-use std::env;
 use std::io::{Error as IOError};
 use std::collections::HashSet;
 
@@ -11,6 +11,8 @@ use shiplift::{Docker, image::{PushOptions, PullOptions, BuildOptions, ImageInfo
 
 use std::default::Default;
 use std::path::{PathBuf};
+
+mod env;
 
 use futures::stream::StreamExt;
 #[allow(unused_macros)]
@@ -20,6 +22,8 @@ pub mod logging {
 }
 
 use logging::*;
+
+use crate::env::{reg_url, reg_username, reg_password};
 
 pub enum VerifyEnvError {
     VerifyFailed(Vec<String>),
@@ -98,8 +102,8 @@ pub async fn retrieve_containers(docker: &Docker) -> Result <Vec<ContainerInfo>,
 /// - `Ok(())` - Image(s) built successfully
 /// - `Err(String)` - Error trace
 pub async fn build_image(docker: &Docker, list_chall_names : Vec<&str>) -> Result<(), String> {
-    let challenge_folder = &get_env("CHALL_FOLDER")?;
-    let registry_url = &get_env("DOCKER_REGISTRY_URL")?;
+    let challenge_folder = chall_folder_default();
+    let registry_url = reg_url();
 
     let path_to_registry = PathBuf::from(registry_url);
 
@@ -169,7 +173,7 @@ pub fn verify_env() -> Result<(), VerifyEnvError> {
     let req_envs_string = fs::read_to_string(".required_envs")?;
     let req_envs: Vec<&str> = req_envs_string.lines().collect();
 
-    let vars: Vec<String> = env::vars().map(|(var_name, _)| var_name).collect();
+    let vars: Vec<String> = std::env::vars().map(|(var_name, _)| var_name).collect();
 
     let existing_envs: HashSet<&str> = vars.iter().map(String::as_str).collect();
 
@@ -195,7 +199,7 @@ pub fn verify_env() -> Result<(), VerifyEnvError> {
 /// - `Ok(Vec<String>)` - List of challenges with Dockerfiles in root
 /// - `Err(String)` - Error trace (likely a missing environment variable or failure to read a directory)
 pub fn fetch_chall_folder_names() -> Result<Vec<String>, String> {
-    let local_repo_path = PathBuf::from( &get_env("CHALL_FOLDER")? );
+    let local_repo_path = PathBuf::from(chall_folder_default());
 
     let mut chall_names : Vec<String> = Vec::new();
     match read_dir(&local_repo_path) {
@@ -290,9 +294,9 @@ pub async fn build_all_images(docker : &Docker) -> Result<String, String> {
 /// - `Ok(())` - Image successfully pushed
 /// - `Err(String)` - Error occurred while pushing
 pub async fn push_image(docker: &Docker, name: &str) -> Result<(), String> {
-    let registry_username = &get_env("DOCKER_REGISTRY_USERNAME")?;
-    let registry_password = &get_env("DOCKER_REGISTRY_PASSWORD")?;
-    let registry_url = &get_env("DOCKER_REGISTRY_URL")?;
+    let registry_username = reg_username();
+    let registry_password = reg_password();
+    let registry_url = reg_url();
 
     let auth = shiplift::RegistryAuth::builder()
         .username(registry_username)
@@ -330,9 +334,9 @@ pub async fn push_image(docker: &Docker, name: &str) -> Result<(), String> {
 /// - `Ok(())` - Image successfully pulled
 /// - `Err(String)` - Error occurred while pulling
 pub async fn pull_image(docker: &Docker, name: &str) -> Result<(), String>{
-    let registry_username = &get_env("DOCKER_REGISTRY_USERNAME")?;
-    let registry_password = &get_env("DOCKER_REGISTRY_PASSWORD")?;
-    let registry_url = &get_env("DOCKER_REGISTRY_URL")?;
+    let registry_username = reg_username();
+    let registry_password = reg_password();
+    let registry_url = reg_password();
 
     let auth = shiplift::RegistryAuth::builder()
         .username(registry_username)
@@ -388,7 +392,7 @@ pub async fn pull_image(docker: &Docker, name: &str) -> Result<(), String>{
 pub async fn delete_image(docker: &Docker, name: &str) -> Result<(), String> {
     info!("Deleting image: {}", name);
 
-    let registry_url = &get_env("DOCKER_REGISTRY_URL")?;
+    let registry_url = reg_url();
     let mut full_challenge_name = PathBuf::from(registry_url);
     full_challenge_name.push(name);
 
@@ -415,14 +419,14 @@ pub async fn delete_image(docker: &Docker, name: &str) -> Result<(), String> {
     }
 }
 
-/// Helper function to just simplify and clean up environment variable fetching
-fn get_env(env_name: &str) -> Result<String, String> {
-    match env::var(env_name) {
-        Ok(val) => Ok(val.to_string()),
-        Err(e) => {
-            error!("Error reading \"{}\" env var", env_name);
-            debug!("Trace: {:?}", e);
-            return Err(e.to_string());
-        }
-    }
-}
+// /// Helper function to just simplify and clean up environment variable fetching
+// fn get_env(env_name: &str) -> Result<String, String> {
+//     match env::var(env_name) {
+//         Ok(val) => Ok(val.to_string()),
+//         Err(e) => {
+//             error!("Error reading \"{}\" env var", env_name);
+//             debug!("Trace: {:?}", e);
+//             return Err(e.to_string());
+//         }
+//     }
+// }

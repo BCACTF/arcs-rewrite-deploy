@@ -101,7 +101,7 @@ pub async fn deploy_challenge(
 ) -> Result<Vec<i32>, DeployProcessErr> {
     info!("Deploying {} to Kubernetes cluster...", name);
 
-    let chall_folder = get_chall_folder(chall_folder_path).map_err(DeployProcessErr::Fetch)?;
+    let chall_folder = get_chall_folder(chall_folder_path);
 
     pull_challenge(docker, name, polling_id).await?;
     

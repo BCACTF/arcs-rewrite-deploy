@@ -2,6 +2,8 @@ mod server;
 mod polling;
 mod auth;
 
+pub mod env;
+
 pub use crate::server::emitter;
 pub use crate::server::receiver;
 use server::initialize_server;

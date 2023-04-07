@@ -6,15 +6,22 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bollard = "0.13.0"
-serde_yaml = "0.9.9"
-dotenv = "0.15.0"
-shiplift = { git = "https://github.com/fortanix/shiplift", branch = "master" }
-dotenv_codegen = "0.15.0"
-hyper = "0.14.20"
-tokio = { version = "1.20.1", features=["full"] }
+# ARCS dependencies
 arcs-deploy-logging = { version = "0.1.0", path = "../arcs-deploy-logging" }
+arcs-deploy-env = { version = "0.1.0", path = "../arcs-deploy-env" }
+
+# Docker-related
+shiplift = { git = "https://github.com/fortanix/shiplift", branch = "master" }
 tar = "0.4.38"
+
+# Async-related
 futures = "0.3.23"
+tokio = { version = "1.20.1", features=["full"] }
+
+# Web Server
+hyper = "0.14.20"
+
+# Misc
+dotenv = "0.15.0"
 smallvec = "1.9.0"
 const_format = "0.2.26"

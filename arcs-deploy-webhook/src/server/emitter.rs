@@ -1,19 +1,9 @@
 use reqwest::Client;
-
-use crate::logging::*;
-
 use serde_json::json;
 
-use lazy_static::lazy_static;
-
-use super::responses::Metadata;
-
-lazy_static!(
-
-    static ref WEBHOOK_SERVER_URL: String = std::env::var("WEBHOOK_SERVER_URL").expect("WEBHOOK_SERVER_URL must be set");
-    static ref DEPLOY_SERVER_AUTH_TOKEN: String = std::env::var("DEPLOY_SERVER_AUTH_TOKEN").expect("DEPLOY_SERVER_AUTH_TOKEN must be set");
-
-);
+use crate::logging::*;
+use crate::env::{webhook_address, deploy_token};
+use crate::server::responses::Metadata;
 
 // TODO - validate return types of this function
 // TODO - Actually make the SQL, Main, Discord branches send out the correct information
@@ -42,8 +32,8 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Vec<i32>) -> Result
         }
     );
 
-    let response = emitter.post(WEBHOOK_SERVER_URL.as_str())
-        .bearer_auth(DEPLOY_SERVER_AUTH_TOKEN.as_str())
+    let response = emitter.post(webhook_address())
+        .bearer_auth(deploy_token())
         .json(&jsonbody)
         .send()
         .await;
@@ -95,8 +85,8 @@ pub async fn send_deployment_failure(meta: &Metadata, err: String) -> Result<(),
         }
     );
 
-    let response = emitter.post(WEBHOOK_SERVER_URL.as_str())
-        .bearer_auth(DEPLOY_SERVER_AUTH_TOKEN.as_str())
+    let response = emitter.post(webhook_address())
+        .bearer_auth(deploy_token())
         .json(&jsonbody)
         .send()
         .await;

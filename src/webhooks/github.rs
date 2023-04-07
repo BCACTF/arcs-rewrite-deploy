@@ -69,38 +69,18 @@ pub enum AuthError {
 type Hmac256 = hmac::Hmac<sha2::Sha256>;
 
 pub fn verify_auth(req_head: &RequestHead, req_body: &[u8]) -> Result<(), AuthError> {
-    use guard::guard;
     use AuthError::*;
 
-    guard!(
-        let Ok(guard) = WEBHOOK_SECRET.read()
-        else { return Err(LockErr) }
-    );
-    guard!(
-        let Some(secret) = &*guard
-        else { return Err(NoConfSecret) }
-    );
+    let guard = WEBHOOK_SECRET.read().map_err(|_| LockErr)?;
+    let secret = &**guard.as_ref().ok_or(NoConfSecret)?;
+    let hash_header = req_head.headers().get("X-Hub-Signature-256").ok_or(NoSigInHead)?;
+    let hash_digest = hash_header.as_bytes().strip_prefix("sha256=".as_bytes()).ok_or(HeadFormatErr)?;
 
-    guard!(
-        let Some(hash_header) = req_head.headers().get("X-Hub-Signature-256")
-        else { return Err(NoSigInHead) }
-    );
-    guard!(
-        let Some(hash_digest) = hash_header.as_bytes().strip_prefix("sha256=".as_bytes())
-        else { return Err(HeadFormatErr) }
-    );
-    guard!(
-        let Ok(hash) = hex::decode(hash_digest)
-        else { return Err(HeadFormatErr) }
-    );
-
+    let hash = hex::decode(hash_digest).map_err(|_| HeadFormatErr)?;
 
 
     use hmac::Mac;
-    guard!(
-        let Ok(mac) = Hmac256::new_from_slice(secret.as_bytes())
-        else { return Err(VerifyProcErr) }
-    );
+    let mac = Hmac256::new_from_slice(secret.as_bytes()).map_err(|_| VerifyProcErr)?;
 
     let mac = mac.chain_update(req_body);
 

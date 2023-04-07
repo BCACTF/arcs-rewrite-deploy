@@ -8,6 +8,7 @@ use constant_time_eq::constant_time_eq_32;
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use actix_web::dev::ServiceRequest;
 use actix_web::http::StatusCode as actixStatusCode;
+use crate::env::webhook_token;
 use crate::logging::*;
 
 #[derive(Debug)]
@@ -39,9 +40,8 @@ impl Authentication {
 }
 
 lazy_static! {
-    static ref WEBHOOK_SERVER_TOKEN: String = std::env::var("WEBHOOK_SERVER_AUTH_TOKEN").expect("WEBHOOK_SERVER_TOKEN must be set");
     // parsed into a [u8;32] for constant time comparison
-    static ref WEBHOOKARR : [u8;32]= match (&WEBHOOK_SERVER_TOKEN.as_bytes().to_owned()[..]).try_into() {
+    static ref WEBHOOKARR : [u8;32]= match (&webhook_token().as_bytes().to_owned()[..]).try_into() {
         Ok(arr) => arr,
         Err(e) => {
             error!("Error converting from slice to [u8;32]");

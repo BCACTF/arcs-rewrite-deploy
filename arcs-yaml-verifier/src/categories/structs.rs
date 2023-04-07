@@ -10,18 +10,22 @@ lazy_static!{
 
     pub static ref CATEGORIES: HashSet<String> = CATEGORY_RAW_ENV_VAR.as_ref().map_or_else(
         || CATEGORY_DEFAULTS.into_iter().map(str::to_string).collect(),
-        |val| val.split(",").map(|part| part.trim().to_string()).collect(),
+        |val| val.split(',').map(|part| part.trim().to_string()).collect(),
     );
 }
 
 #[derive(PartialEq)]
 pub struct Category {
-    name: &'static str,
+    name: String,
 }
 
 impl Category {
     pub fn try_new(name: &'_ str) -> Option<Self> {
-        CATEGORIES.get(name).map(|name| Self { name })
+        // CATEGORIES.get(name).map(|name| Self { name })
+        Some(Self { name: name.to_string() })
+    }
+    pub fn as_str(&self) -> &str {
+        &self.name
     }
 }
 
@@ -47,11 +51,15 @@ impl Categories {
             }
         }
 
-        if invalid_cat_names.len() > 0 {
-            Err(invalid_cat_names)
-        } else {
+        if invalid_cat_names.is_empty() {
             Ok(Self(good_cats))
+        } else {
+            Err(invalid_cat_names)
         }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Category> {
+        self.0.iter()
     }
 }
 
@@ -68,5 +76,4 @@ impl Debug for Categories {
         write!(f, " >")
     }
 }
-
 

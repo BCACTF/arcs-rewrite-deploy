@@ -8,7 +8,6 @@ use serde_yaml::Value as YamlValue;
 
 use crate::structs::{get_type, ValueType};
 
-// use guard::guard;
 
 #[derive(Debug, Clone)]
 pub enum CategoryError {
@@ -18,7 +17,7 @@ pub enum CategoryError {
 }
 impl Display for CategoryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use CategoryError::*;
+        use CategoryError::{InvalidBaseType, InvalidCategories, MissingKey};
         match self {
             InvalidCategories(names, types) => {
                 if !names.is_empty() {
@@ -40,7 +39,7 @@ impl Display for CategoryError {
 }
 
 pub fn value_to_categories(value: &YamlValue) -> Result<Categories, CategoryError> {
-    use CategoryError::*;
+    use CategoryError::{InvalidBaseType, InvalidCategories};
 
     if !value.is_sequence() {
         return Err(InvalidBaseType(get_type(value)));
@@ -59,10 +58,10 @@ pub fn value_to_categories(value: &YamlValue) -> Result<Categories, CategoryErro
         );
 
         match Categories::try_new(cand_name) {
-            Ok(categories) => if bad_type.len() > 0 {
-                Err(InvalidCategories(Vec::new(), bad_type))
-            } else {
+            Ok(categories) => if bad_type.is_empty() {
                 Ok(categories)
+            } else {
+                Err(InvalidCategories(Vec::new(), bad_type))
             },
             Err(bad_names) => Err(InvalidCategories(bad_names.into_iter().map(str::to_string).collect(), bad_type))
         }
