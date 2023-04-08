@@ -60,7 +60,6 @@ pub enum FileEntryError {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FileErrors {
-    MissingKey,
     BadBaseType(ValueType),
     EntryErrors(Vec<FileEntryError>),
 }
@@ -80,7 +79,6 @@ impl Display for FileErrors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use FileErrors::*;
         match self {
-            MissingKey => write!(f, "You have to define `files`."),
             BadBaseType(t) => write!(f, "Files should be a list, not {t}."),
             EntryErrors(errs) => {
                 writeln!(f, "Some entries under `files` are invalid:")?;
@@ -99,5 +97,18 @@ impl Debug for Files {
         f.debug_list()
             .entries(self.0.iter())
             .finish()
+    }
+}
+
+pub trait Flop {
+    type Target;
+    fn flop(self) -> Self::Target;
+}
+impl<T, E> Flop for Option<Result<T, E>> {
+    type Target = Result<Option<T>, E>;
+    fn flop(self) -> Self::Target {
+        if let Some(res) = self {
+            res.map(Some)
+        } else { Ok(None) }
     }
 }

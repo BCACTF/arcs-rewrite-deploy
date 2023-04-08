@@ -5,26 +5,50 @@ pub mod flag;
 pub mod files;
 pub mod correctness;
 
+
+// Serde
+use serde_yaml::{
+    Mapping as YamlMapping,
+    Value as YamlValue,
+};
+
+
+// Parsing functions, types, and errors
+use {
+    flag::get_flag,
+    files::file_list,
+    lists::as_str_list,
+};
+use {
+    files::Files,
+    flag::Flag,
+    lists::structs::{ Authors, Hints },
+    categories::Categories,
+};
+use {
+    lists::structs::{ AuthorError, HintError },
+    flag::FlagError,
+    categories::CategoryError,
+};
+
+// Yaml ValueType stuff
+use structs::{
+    ValueType,
+    get_type,
+};
+
+// Verification stuff
+use structs::{
+    YamlVerifyError,
+    YamlAttribVerifyError
+};
 use correctness::YamlCorrectness;
-use files::Files;
-use flag::Flag;
-use lists::structs::Authors;
-use lists::structs::Hints;
-use serde_yaml::Mapping as YamlMapping;
-use serde_yaml::Value as YamlValue;
-use structs::ValueType;
 
-use categories::Categories;
-use categories::CategoryError;
-use structs::{ YamlVerifyError, YamlAttribVerifyError };
-use structs::get_type;
 
-use crate::files::FileErrors;
-use crate::files::file_list;
-use crate::flag::{ get_flag, FlagError };
-use crate::lists::as_str_list;
-use crate::lists::structs::AuthorError;
-use crate::lists::structs::HintError;
+// misc
+use crate::files::Flop;
+
+
 
 
 
@@ -33,7 +57,7 @@ pub struct YamlShape {
     authors: Authors,
     categories: Categories,
     hints: Hints,
-    files: Files,
+    files: Option<Files>,
 
     points: u64,
     flag: Flag,
@@ -99,7 +123,8 @@ pub fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>
 
         let files = base
             .get("files")
-            .map_or(Err(FileErrors::MissingKey), file_list)
+            .map(file_list)
+            .flop()
             .map_err(Files);
         
         (categories, authors, hints, files)
