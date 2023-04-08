@@ -129,7 +129,7 @@ fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>) ->
     
         let hints = base
             .get("hints")
-            .map_or(Err(HintError::MissingKey), as_str_list)
+            .map_or(crate::lists::StrList::from_iter([].into_iter()), as_str_list)
             .map_err(Hints);
 
         let files = base
