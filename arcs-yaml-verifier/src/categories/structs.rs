@@ -61,6 +61,10 @@ impl Categories {
     pub fn iter(&self) -> impl Iterator<Item = &Category> {
         self.0.iter()
     }
+
+    pub fn slice(&self) -> &[Category] {
+        &self.0
+    }
 }
 
 impl Debug for Categories {

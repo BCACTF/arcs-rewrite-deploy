@@ -1,9 +1,12 @@
-pub mod categories;
-pub mod structs;
-pub mod lists;
-pub mod flag;
-pub mod files;
-pub mod correctness;
+mod categories;
+mod lists;
+mod flag;
+mod files;
+
+mod structs;
+mod accessors;
+
+mod correctness;
 
 
 // Serde
@@ -38,11 +41,11 @@ use structs::{
 };
 
 // Verification stuff
-use structs::{
+pub use structs::{
     YamlVerifyError,
     YamlAttribVerifyError
 };
-use correctness::YamlCorrectness;
+pub use correctness::YamlCorrectness;
 
 
 // misc
@@ -89,7 +92,7 @@ macro_rules! collect_errors {
 }
 
 
-pub fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>) -> Result<YamlShape, YamlVerifyError> {
+fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>) -> Result<YamlShape, YamlVerifyError> {
     use YamlVerifyError::*;
     use YamlAttribVerifyError::*;
 

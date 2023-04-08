@@ -6,6 +6,7 @@ use super::StrList;
 
 #[derive(Clone, PartialEq)]
 pub struct Authors(Vec<String>);
+
 #[derive(Debug, Clone)]
 pub enum AuthorError { BadEntryType(Vec<ValueType>), BadType(ValueType), MissingKey }
 impl StrList for Authors {
@@ -20,6 +21,14 @@ impl StrList for Authors {
 
     fn not_sequence(type_enum: ValueType) -> Self::Error {
         AuthorError::BadType(type_enum)
+    }
+}
+impl Authors {
+    pub fn iter(&self) -> impl Iterator<Item = &str> {
+        self.0.iter().map(|string| string.as_str())
+    }
+    pub fn slice(&self) -> &[String] {
+        &self.0
     }
 }
 
@@ -65,6 +74,14 @@ impl StrList for Hints {
 
     fn not_sequence(type_enum: ValueType) -> Self::Error {
         HintError::BadType(type_enum)
+    }
+}
+impl Hints {
+    pub fn iter(&self) -> impl Iterator<Item = &str> {
+        self.0.iter().map(|string| string.as_str())
+    }
+    pub fn slice(&self) -> &[String] {
+        &self.0
     }
 }
 

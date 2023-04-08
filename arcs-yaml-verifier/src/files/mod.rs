@@ -49,6 +49,14 @@ pub fn file_list(value: &YamlValue) -> Result<Files, FileErrors> {
 
 #[derive(Clone, PartialEq)]
 pub struct Files(Vec<PathBuf>);
+impl Files {
+    pub fn iter(&self) -> impl Iterator<Item = &std::path::Path> {
+        self.0.iter().map(|buf| buf.as_path())
+    }
+    pub fn slice(&self) -> &[PathBuf] {
+        &self.0
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FileEntryError {
