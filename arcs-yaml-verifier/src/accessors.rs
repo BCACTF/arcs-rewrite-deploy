@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::{YamlShape, YamlVerifyError, YamlCorrectness, categories::structs::Category};
+use crate::{YamlShape, YamlVerifyError, YamlCorrectness, categories::structs::Category, deploy::structs::DeployOptions};
 
 
 impl YamlShape {
@@ -38,6 +38,10 @@ impl YamlShape {
     }
     pub fn hints(&self) -> &[String] {
         self.hints.slice()
+    }
+
+    pub fn deploy(&self) -> Option<DeployOptions> {
+        self.deploy
     }
 }
 

@@ -2,6 +2,7 @@ mod categories;
 mod lists;
 mod flag;
 mod files;
+mod deploy;
 
 mod structs;
 mod accessors;
@@ -22,23 +23,28 @@ use {
     files::file_list,
     lists::as_str_list,
 };
+
 use {
     files::Files,
     flag::Flag,
     lists::structs::{ Authors, Hints },
     categories::Categories,
 };
+pub use deploy::structs::DeployOptions;
+
 use {
     lists::structs::{ AuthorError, HintError },
     flag::FlagError,
     categories::CategoryError,
 };
 
+
 // Yaml ValueType stuff
 use structs::{
     ValueType,
     get_type,
 };
+
 
 // Verification stuff
 pub use structs::{
@@ -49,7 +55,7 @@ pub use correctness::YamlCorrectness;
 
 
 // misc
-use crate::files::Flop;
+use crate::{files::Flop, deploy::parse_deploy};
 
 
 
@@ -61,6 +67,8 @@ pub struct YamlShape {
     categories: Categories,
     hints: Hints,
     files: Option<Files>,
+
+    deploy: Option<DeployOptions>,
 
     points: u64,
     flag: Flag,
@@ -133,6 +141,18 @@ fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>) ->
         (categories, authors, hints, files)
     };
 
+
+    let deploy = base
+        .get("deploy")
+        .map(parse_deploy)
+        .flop()
+        .map_err(Deploy);
+
+
+    let points = if let Some(point_val) = base.get("value") {
+        point_val.as_u64().ok_or_else(|| PointsNotInt(get_type(point_val)))
+    } else { Err(PointsNotInt(ValueType::NULL)) };
+
     let flag = base
         .get("flag")
         .map_or(Err(FlagError::MissingKey), get_flag)
@@ -140,33 +160,17 @@ fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>) ->
 
 
     let name = if let Some(name_val) = base.get("name") {
-        name_val
-            .as_str()
-            .map(str::to_string)
-            .ok_or_else(|| NameNotString(get_type(name_val)))
+        name_val.as_str().map(str::to_string).ok_or_else(|| NameNotString(get_type(name_val)))
     } else { Err(NameNotString(ValueType::NULL)) };
 
-    let points = if let Some(point_val) = base.get("value") {
-        point_val
-            .as_u64()
-            .ok_or_else(|| PointsNotInt(get_type(point_val)))
-    } else { Err(PointsNotInt(ValueType::NULL)) };
-
-
     let description = if let Some(desc_val) = base.get("description") {
-        desc_val
-            .as_str()
-            .map(str::to_string)
-            .ok_or_else(|| DescNotString(get_type(desc_val)))
+        desc_val.as_str().map(str::to_string).ok_or_else(|| DescNotString(get_type(desc_val)))
     } else {  Err(DescNotString(ValueType::NULL)) };
 
 
     let visible = if let Some(point_val) = base.get("visible") {
-        point_val
-            .as_bool()
-            .ok_or_else(|| VisNotBool(get_type(point_val)))
+        point_val.as_bool().ok_or_else(|| VisNotBool(get_type(point_val)))
     } else { Err(VisNotBool(ValueType::NULL)) };
-    // println!("cat: {categories:#?}, name: {name:#?}");
 
     let (
         authors,
@@ -174,6 +178,8 @@ fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>) ->
         hints,
         files,
         
+        deploy,
+
         points,
         flag,
         
@@ -187,6 +193,8 @@ fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>) ->
         hints,
         files,
         
+        deploy,
+
         points,
         flag,
 
@@ -198,11 +206,12 @@ fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>) ->
 
     let shape = YamlShape {
         authors, categories, hints, files,
+        deploy,
         points, flag,
         name, description,
         visible,
     };
-    correctness.verify(&shape).map_err(|err| PartErrors(vec![Correctness(err)]))?;
+    correctness.verify(&shape).map_err(Correctness)?;
 
     Ok(shape)
 }

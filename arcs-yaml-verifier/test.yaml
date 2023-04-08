@@ -33,4 +33,8 @@ files:
   - src: ./hint.mp3
 authors:
   - eiis1000
+deploy:
+  web:
+    build: .
+    expose: 54320/tcp
 visible: true

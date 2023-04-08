@@ -6,6 +6,7 @@ use serde_yaml::Value as YamlValue;
 
 use crate::categories::CategoryError;
 use crate::correctness::YamlCorrectness;
+use crate::deploy::error::DeployOptionsError;
 use crate::files::FileErrors;
 use crate::flag::FlagError;
 use crate::lists::structs::AuthorError;
@@ -68,13 +69,13 @@ pub enum YamlAttribVerifyError {
     Flag(FlagError),
     Files(FileErrors),
 
+    Deploy(DeployOptionsError),
+
     NameNotString(ValueType),
     PointsNotInt(ValueType),
 
     DescNotString(ValueType),
     VisNotBool(ValueType),
-
-    Correctness(YamlCorrectness),
 }
 
 #[derive(Debug)]
@@ -82,6 +83,7 @@ pub enum YamlVerifyError {
     Unparsable(YamlError),
     BaseNotMap(ValueType),
     PartErrors(Vec<YamlAttribVerifyError>),
+    Correctness(YamlCorrectness),
 }
 
 impl Display for YamlAttribVerifyError {
@@ -101,7 +103,7 @@ impl Display for YamlAttribVerifyError {
             Hints(hint_err) => writeln!(f, "{hint_err}"),
             Files(file_errors) => writeln!(f, "{file_errors}"),
 
-            Correctness(correctness) => writeln!(f, "{correctness}"),
+            Deploy(deploy_err) => writeln!(f, "{deploy_err}"),
         }
     }
 }
@@ -119,6 +121,7 @@ impl Display for YamlVerifyError {
                 }
                 Ok(())
             }
+            Correctness(correctness) => writeln!(f, "{correctness}"),
         }
     }
 }
