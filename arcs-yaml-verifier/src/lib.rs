@@ -7,7 +7,7 @@ mod deploy;
 mod structs;
 mod accessors;
 
-mod correctness;
+pub mod correctness;
 
 
 // Serde
@@ -33,7 +33,7 @@ use {
 pub use deploy::structs::DeployOptions;
 
 use {
-    lists::structs::{ AuthorError, HintError },
+    lists::structs::AuthorError,
     flag::FlagError,
     categories::CategoryError,
 };
@@ -51,7 +51,7 @@ pub use structs::{
     YamlVerifyError,
     YamlAttribVerifyError
 };
-pub use correctness::YamlCorrectness;
+use correctness::YamlCorrectness;
 
 
 // misc
@@ -218,28 +218,10 @@ fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>) ->
 
 #[doc(hidden)]
 pub mod __main {
-    use std::borrow::Cow::{ self, Borrowed };
+    use crate::correctness::YamlCorrectness;
 
-    use crate::correctness::*;
-
-    const CATEGORIES: &[Cow<'static, str>] = &[
-        Borrowed("misc"),
-        Borrowed("binex"),
-        Borrowed("foren"),
-        Borrowed("crypto"),
-        Borrowed("webex"),
-    ];
-
-    pub fn main() {
+    pub fn main(yaml_correctness: YamlCorrectness) {
         let mut errors_encountered = false;
-
-        let yaml_correctness = YamlCorrectness::default()
-            .with_flag(FlagCorrectness::CompName("bcactf".into()))
-            .with_cats(CategoryCorrectness::List {
-                names: Borrowed(CATEGORIES),
-                requires_case_match: false,
-            })
-            .with_pnts(PointCorrectness::Multiple(25));
 
         std::env::args()
             .skip(1)
@@ -264,5 +246,8 @@ pub mod __main {
                     },
                 }
             );
+        if errors_encountered {
+            std::process::exit(1);
+        }
     }
 }
