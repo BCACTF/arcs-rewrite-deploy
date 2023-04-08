@@ -6,14 +6,15 @@ use serde_yaml::Value as YamlValue;
 
 use crate::categories::CategoryError;
 use crate::correctness::YamlCorrectness;
+use crate::files::FileErrors;
 use crate::flag::FlagError;
 use crate::lists::structs::AuthorError;
 use crate::lists::structs::HintError;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ValueType { type_enum: ValueTypeEnum }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ValueTypeEnum { Null, Bool, Number, String, Sequence, Mapping, Tagged }
 pub fn get_type(value: &YamlValue) -> ValueType {
     use YamlValue::*;
@@ -65,6 +66,7 @@ pub enum YamlAttribVerifyError {
     Authors(AuthorError),
     Hints(HintError),
     Flag(FlagError),
+    Files(FileErrors),
 
     NameNotString(ValueType),
     PointsNotInt(ValueType),
@@ -97,6 +99,7 @@ impl Display for YamlAttribVerifyError {
             Categories(cat_err) => writeln!(f, "{cat_err}"),
             Authors(author_err) => writeln!(f, "{author_err}"),
             Hints(hint_err) => writeln!(f, "{hint_err}"),
+            Files(file_errors) => writeln!(f, "{file_errors}"),
 
             Correctness(correctness) => writeln!(f, "{correctness}"),
         }

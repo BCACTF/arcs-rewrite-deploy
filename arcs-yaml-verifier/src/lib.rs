@@ -2,9 +2,11 @@ pub mod categories;
 pub mod structs;
 pub mod lists;
 pub mod flag;
+pub mod files;
 pub mod correctness;
 
 use correctness::YamlCorrectness;
+use files::Files;
 use flag::Flag;
 use lists::structs::Authors;
 use lists::structs::Hints;
@@ -17,6 +19,8 @@ use categories::CategoryError;
 use structs::{ YamlVerifyError, YamlAttribVerifyError };
 use structs::get_type;
 
+use crate::files::FileErrors;
+use crate::files::file_list;
 use crate::flag::{ get_flag, FlagError };
 use crate::lists::as_str_list;
 use crate::lists::structs::AuthorError;
@@ -29,6 +33,7 @@ pub struct YamlShape {
     authors: Authors,
     categories: Categories,
     hints: Hints,
+    files: Files,
 
     points: u64,
     flag: Flag,
@@ -71,7 +76,12 @@ pub fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>
         return Err(BaseNotMap(get_type(&base)))
     };
 
-    let (categories, authors, hints) = {
+    let (
+        categories,
+        authors,
+        hints,
+        files,
+    ) = {
         let categories = base
             .get("categories")
             .map_or(Err(CategoryError::MissingKey), categories::value_to_categories)
@@ -86,8 +96,13 @@ pub fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>
             .get("hints")
             .map_or(Err(HintError::MissingKey), as_str_list)
             .map_err(Hints);
+
+        let files = base
+            .get("files")
+            .map_or(Err(FileErrors::MissingKey), file_list)
+            .map_err(Files);
         
-        (categories, authors, hints)
+        (categories, authors, hints, files)
     };
 
     let flag = base
@@ -129,6 +144,7 @@ pub fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>
         authors,
         categories,
         hints,
+        files,
         
         points,
         flag,
@@ -141,6 +157,7 @@ pub fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>
         authors,
         categories,
         hints,
+        files,
         
         points,
         flag,
@@ -152,7 +169,7 @@ pub fn verify_yaml(yaml_text: &str, correctness_options: Option<YamlCorrectness>
     ).map_err(PartErrors)?;
 
     let shape = YamlShape {
-        authors, categories, hints,
+        authors, categories, hints, files,
         points, flag,
         name, description,
         visible,

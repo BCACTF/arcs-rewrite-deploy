@@ -27,9 +27,9 @@ impl Display for AuthorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use AuthorError::*;
         match self {
-            &BadEntryType(_) => write!(f, "Author names must be strings."),
-            &BadType(t) => write!(f, "Authors should be a list, not {t}."),
-            MissingKey => write!(f, "You have to define `authors`."),
+            &BadEntryType(_) => writeln!(f, "Author names must be strings."),
+            &BadType(t) => writeln!(f, "Authors should be a list, not {t}."),
+            MissingKey => writeln!(f, "You have to define `authors`."),
         }
     }
 }
@@ -72,9 +72,9 @@ impl Display for HintError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use HintError::*;
         match self {
-            &BadEntryType(_) => write!(f, "Hints must be strings."),
-            &BadType(t) => write!(f, "Hints should be in a list, not {t}."),
-            MissingKey => write!(f, "You have to define `hints`."),
+            &BadEntryType(_) => writeln!(f, "Hints must be strings."),
+            &BadType(t) => writeln!(f, "Hints should be in a list, not {t}."),
+            MissingKey => writeln!(f, "You have to define `hints`."),
         }
     }
 }
@@ -86,4 +86,5 @@ impl Debug for Hints {
             .finish()
     }
 }
+
 
