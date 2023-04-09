@@ -19,6 +19,7 @@ pub mod logging {
 use logging::*;
 
 use crate::env::{reg_username, reg_password, reg_url};
+pub use env::check_env_vars;
 
 // BIG TODOS --> 
 // GET RID OF CHALL FOLDER PATH REFERENCES, MIGRATE TO ENV VAR - DONE

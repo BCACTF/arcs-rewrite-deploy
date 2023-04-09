@@ -13,6 +13,7 @@ use std::default::Default;
 use std::path::{PathBuf};
 
 mod env;
+pub use env::check_env_vars;
 
 use futures::stream::StreamExt;
 #[allow(unused_macros)]
