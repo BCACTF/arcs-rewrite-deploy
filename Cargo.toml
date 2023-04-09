@@ -14,7 +14,7 @@ paste = "1.0.8"
 smallvec = "1.9.0"
 tokio = "1.20.1"
 tokio-postgres = "0.7.6"
-arcs-yaml-verifier = { version = "0.1.0", path = "arcs-yaml-verifier" }
+arcs-yaml-parser = { version = "0.1.0", path = "arcs-yaml" }
 dotenv = "0.15.0"
 arcs-deploy-shared-structs = { version = "0.1.0", path = "arcs-deploy-shared-structs" }
 arcs-deploy-k8s = { version = "0.1.0", path = "arcs-deploy-k8s" }

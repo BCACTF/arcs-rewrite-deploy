@@ -1,0 +1,3 @@
+[submodule "arcs-yaml"]
+	path = arcs-yaml
+	url = https://github.com/BCACTF/arcs-yaml
