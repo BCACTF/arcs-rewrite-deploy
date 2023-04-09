@@ -1,13 +1,14 @@
 mod r#macro; // Literal identifier syntax.
 pub mod r#trait;
+pub mod structs;
 
 use lazy_init::Lazy;
 use r#macro::logging_parts;
 use lazy_static::lazy_static;
 
 use r#trait::WriteImmut;
+use structs::{PoisonErrorWrapper, ErrorWrapper};
 
-use arcs_deploy_shared_structs::*;
 use std::collections::HashMap;
 use smallvec::{SmallVec, smallvec};
 
@@ -97,6 +98,7 @@ enum WritableLogLocationTarget {
 
 impl WriteImmut for WritableLogLocationTarget {
     fn write(&self, buf: &[u8]) -> IOResult<usize> {
+        
         match self {
             WritableLogLocationTarget::StdOut => Write::write(&mut stdout(), buf),
             WritableLogLocationTarget::StdErr => Write::write(&mut stderr(), buf),
