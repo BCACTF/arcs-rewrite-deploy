@@ -16,10 +16,11 @@ arcs-deploy-logging = { version = "0.1.0", path = "./arcs-deploy-logging" }
 arcs-deploy-docker = { version = "0.1.0", path = "./arcs-deploy-docker" }
 arcs-deploy-k8s = { version = "0.1.0", path = "./arcs-deploy-k8s" }
 arcs-deploy-env = { version = "0.1.0", path = "./arcs-deploy-env" }
+arcs-deploy-static = { version = "0.1.0", path="./arcs-deploy-static" }
 
 shiplift = { git = "https://github.com/fortanix/shiplift", branch = "master" }
 dotenv = "0.15.0"
-kube = "0.74.0"
+kube = "0.82.0"
 chashmap = "2.2.2"
 lazy_static = "1.4.0"
 const_format = "0.2.30"

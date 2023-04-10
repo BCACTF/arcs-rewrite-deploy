@@ -7,3 +7,4 @@
 **/tarball_challs
 .required_envs_conglomerate
 arcs-yaml-verifier/test.yaml
+**/test.sh

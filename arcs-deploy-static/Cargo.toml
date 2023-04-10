@@ -1,22 +1,13 @@
 [package]
-name = "arcs-deploy-k8s"
+name = "arcs-deploy-static"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-k8s-openapi = {version="0.18.0", features=["v1_24"]}
-kube-runtime = "0.82.0"
-serde = { version = "1.0.144", features = ["derive"] }
-serde_yaml = "0.9.10"
+reqwest = { version = "0.11.15", features=["json"] }
 tokio = { version = "1.20.1", features=["full"] }
-kube = "0.82.0"
-futures = "0.3.23"
 
 arcs-deploy-logging = { version = "0.1.0", path = "../arcs-deploy-logging" }
 arcs-deploy-env = { version = "0.1.0", path = "../arcs-deploy-env" }
-
-serde_json="1.0.85"
-dotenv = "0.15.0"
-base64 = "0.21.0"

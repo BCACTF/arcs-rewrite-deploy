@@ -1,10 +1,10 @@
 use env::chall_folder_default;
-use k8s_openapi::{api::{core::v1::{Pod, Service, Secret}, 
-                  apps::v1::Deployment}};
+use k8s_openapi::api::{core::v1::{Pod, Service, Secret}, 
+                  apps::v1::Deployment};
 use kube::{Client, Api, Error, 
-           core::{ObjectList},
+           core::ObjectList,
            api::{ListParams, PostParams, DeleteParams}};
-use std::{fs::{File}, io::Read, path::PathBuf, collections::{HashMap}};
+use std::{fs::File, io::Read, path::PathBuf, collections::HashMap};
 pub mod network_protocol;
 mod env;
 
@@ -22,9 +22,7 @@ use crate::env::{reg_username, reg_password, reg_url};
 pub use env::check_env_vars;
 
 // BIG TODOS --> 
-// GET RID OF CHALL FOLDER PATH REFERENCES, MIGRATE TO ENV VAR - DONE
 // MERGE DUPLICATE CODE SECTIONS 
-// CLEAN UP CODE IN GENERAL, THIS REALLY SUCKS
 // IMPROVE LOGGING
 // CHECK OUT LOAD BALANCING (not priority)
 // Right now, if it tries creating a deployment but does not have image locally, it doesn't say anything - not a huge deal since pulling will throw problem
@@ -80,8 +78,7 @@ fn fetch_challenge_params(name: &str, chall_folder_path: Option<&str>) -> Result
         ("nc", nc),
     ]
         .into_iter()
-        .map(|(name, data)| data.map(|data| (name, data)))
-        .flatten()
+        .filter_map(|(name, data)| data.map(|data| (name, data)))
         .collect();
 
     Ok(deploy_service_types)
@@ -96,7 +93,7 @@ pub async fn create_client() -> Result<Client, String> {
     match Client::try_default().await {
         Ok(client) => {
             info!("Successfully connected to Kubernetes");
-            match generate_registry_secret(client.clone()).await {
+            match generate_registry_secret(&client).await {
                 Ok(_) => {
                     info!("Successfully created Docker registry secret");
                     Ok(client)
@@ -105,7 +102,7 @@ pub async fn create_client() -> Result<Client, String> {
                     error!("Error creating registry secret");
                     warn!("Ensure Kubernetes cluster is running");
                     debug!("Trace: {:?}", err);
-                    Err(err.to_string())
+                    Err(err)
                 }
             }
         },
@@ -117,8 +114,8 @@ pub async fn create_client() -> Result<Client, String> {
     }
 }
 
-pub async fn get_pods(client : Client) -> Result<ObjectList<Pod>, String> {
-    let pods: Api<Pod> = Api::default_namespaced(client);
+pub async fn get_pods(client : &Client) -> Result<ObjectList<Pod>, String> {
+    let pods: Api<Pod> = Api::default_namespaced(client.clone());
     match pods.list(&ListParams::default()).await {
         Ok(pods) => {
             Ok(pods)
@@ -133,6 +130,7 @@ pub async fn get_pods(client : Client) -> Result<ObjectList<Pod>, String> {
 
 // TODO --> Add support for admin bot stuff
 // TODO --> Return list of challenges with their respective addresses to access (look into load balancer ingresses and such)
+// TODO --> Load balancing
 
 /// Sets up a full Kubernetes deployment for every challenge in `name_list`. 
 /// 
@@ -149,28 +147,23 @@ pub async fn get_pods(client : Client) -> Result<ObjectList<Pod>, String> {
 /// ## Returns
 /// - `Ok(Vec<i32>)` - Vector with all corresponding exposed port numbers of each challenge deployed
 /// - `Err(String)` - Error trace if error occurs
-pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_folder_path: Option<&str>) -> Result<Vec<i32>, String> {    
+pub async fn create_challenge(client : &Client, name_list : Vec<&str>, chall_folder_path: Option<&str>) -> Result<Vec<i32>, String> {    
     let mut port_list = Vec::new();
     for name in name_list {
         info!("Creating challenge {:?}", name);
-        
-        let _deployment = match create_deployment(client.clone(), name, chall_folder_path).await {
-            Ok(deployment) => {
-                deployment
-            }
-            Err(err) => {
-                error!("Error creating deployment");
-                info!("Trace: {:?}", err);
-                return Err(err.to_string());
-            }
-        };
     
-        let service = match create_service(client.clone(), name, chall_folder_path).await {
+        if let Err(err) = create_deployment(client, name, chall_folder_path).await {
+            error!("Error creating deployment");
+            info!("Trace: {:?}", err);
+            return Err(err);
+        }
+
+        let service = match create_service(client, name, chall_folder_path).await {
             Ok(service) => service,
             Err(err) => {
                 error!("Error creating service");
                 info!("Trace: {:?}", err);
-                return Err(err.to_string());
+                return Err(err);
             }
         };
         // basically all this does is returns the port that the service is listening on externally
@@ -198,15 +191,13 @@ pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_fold
             }
         };
 
-        // add in tcp/udp differences
-        // maybe look into LoadBalancer ingress to get external ip as well
-        info!("Challenge {:?} successfully created --> port {}", name, service_port);
+        info!("Challenge {name} successfully created --> port {service_port}");
         port_list.push(service_port);
     }
     Ok(port_list)
 }
 
-// TODO --> Add a check to see if there is more than 1 replica, and if so, set up a loadBalancer for that chall instead of a nodePort
+// TODO --> Add a check to see if there is more than 1 replica, and if so, set up a loadBalancer for that chall instead of a nodePort - may not be necessary
 
 /// Creates a Kubernetes [`Service`][Service] with name `<ChallengeName>-service` for a given challenge
 /// 
@@ -216,7 +207,7 @@ pub async fn create_challenge(client : Client, name_list : Vec<&str>, chall_fold
 /// ## Returns
 /// - `Ok(Service)` - Kubernetes [`Service`][Service] object
 /// - `Err(String)` - Error trace if error occurs
-async fn create_service(client: Client, name : &str, chall_folder_path: Option<&str>) -> Result<Service, String> {
+async fn create_service(client: &Client, name : &str, chall_folder_path: Option<&str>) -> Result<Service, String> {
     let services: Api<Service> = Api::default_namespaced(client.clone());
     let service_name = format!("{}-service", name);
 
@@ -225,32 +216,24 @@ async fn create_service(client: Client, name : &str, chall_folder_path: Option<&
         Err(err) => {
             error!("Error fetching challenge params");
             info!("Trace: {:?}", err);
-            return Err(err.to_string());
+            return Err(err);
         }
     };
 
-    // TODO --> THIS DOES NOT SUPPORT ADMIN BOTS YET 
+    // TODO --> admin bot branch
     let data_service : Service;
-    if let Some(params) = chall_params.get("web") {
+    if let Some(params) = chall_params.get("web").or_else(|| chall_params.get("nc")) {
         data_service = create_schema_service(name, params).await?;
-    } else if let Some(params) = chall_params.get("nc") {
-        data_service = create_schema_service(name, params).await?;
-    } else if let Some(_params) = chall_params.get("admin") {
-        todo!("Admin bots not yet supported");
     } else {
-        error!("Error creating service schema, check yaml");
         return Err("Error creating service schema, check yaml".to_string());
     }
 
-    match service_exists(client.clone(), name).await {
+    match service_exists(client, name).await {
         Ok(status) => {
             if status {
                 warn!("Service already exists, deleting");
-                match delete_service(client.clone(), name).await {
-                    Err(err) => {
-                        return Err(err.to_string());
-                    },
-                    _ => ()
+                if let Err(err) = delete_service(client, name).await {
+                    return Err(err);
                 }
             }
         }, 
@@ -279,19 +262,16 @@ async fn create_service(client: Client, name : &str, chall_folder_path: Option<&
 /// ## Returns
 /// - `Ok(Secret)` - Kubernetes [`Secret`][Secret] object
 /// - `Err(String)` - Error trace if error occurs
-async fn generate_registry_secret(client: Client) -> Result<Secret, String>{
+async fn generate_registry_secret(client: &Client) -> Result<Secret, String>{
     info!("Generating remote Docker registry secret...");
     let secrets: Api<Secret> = Api::default_namespaced(client.clone());
 
-    match secret_exists(client.clone(), "container-registry-credentials").await {
+    match secret_exists(client, "container-registry-credentials").await {
         Ok(status) => {
             if status {
                 warn!("Registry secret already exists, deleting");
-                match delete_secret(client.clone(), "container-registry-credentials").await {
-                    Err(err) => {
-                        return Err(err.to_string());
-                    },
-                    _ => ()
+                if let Err(err) = delete_secret(client, "container-registry-credentials").await {
+                    return Err(err);
                 }
             }
         },
@@ -305,14 +285,17 @@ async fn generate_registry_secret(client: Client) -> Result<Secret, String>{
     let registry_username = reg_username();
     let registry_password = reg_password();
     let registry_url = reg_url();
-    // let registry_username = get_env("DOCKER_REGISTRY_USERNAME")?;
-    // let registry_password = get_env("DOCKER_REGISTRY_PASSWORD")?;
-    // let registry_url = get_env("DOCKER_REGISTRY_URL")?;
+    
+    use base64::{Engine as _, engine::general_purpose::STANDARD as base64encoderator};
 
-    let encoded = base64::encode(format!("{}:{}", registry_username, registry_password));
+    let mut encoded = String::with_capacity((registry_username.len() + registry_password.len()) * 4 / 3 + 4);
 
-    let dockerconfigdata : String = "{\"auths\":{\"".to_owned() + &registry_url + &"\":{\"username\":\"".to_owned() + &registry_username + "\",\"password\":\"" + &registry_password + "\",\"auth\":\"" + &encoded + "\"}}}";
-    let base_encoded_dockerconfigdata : String = base64::encode(dockerconfigdata);
+    base64encoderator.encode_string(format!("{}:{}", registry_username, registry_password), &mut encoded);
+
+    let dockerconfigdata : String = "{\"auths\":{\"".to_owned() + registry_url + "\":{\"username\":\"" + registry_username + "\",\"password\":\"" + registry_password + "\",\"auth\":\"" + &encoded + "\"}}}";
+    let mut base_encoded_dockerconfigdata : String = String::with_capacity(dockerconfigdata.len() * 4 / 3 + 4);
+    
+    base64encoderator.encode_string(dockerconfigdata, &mut base_encoded_dockerconfigdata);
 
     let secret : Result<Secret, String> = match serde_json::from_value(serde_json::json!({
             "apiVersion": "v1",
@@ -380,13 +363,13 @@ async fn create_schema_service(name: &str, params: &ChallengeParams) -> Result<S
             "type": "NodePort"
         }
     })) {
-        Ok(data_service) => return Ok(data_service),
+        Ok(data_service) => Ok(data_service),
         Err(err) => {
             error!("Error creating schema for service");
             debug!("Trace: {:?}", err);
-            return Err(err.to_string());
+            Err(err.to_string())
         }
-    };
+    }
 }
 
 // TODO - migrate schema to a separate file for organizational purposes
@@ -397,7 +380,7 @@ async fn create_schema_service(name: &str, params: &ChallengeParams) -> Result<S
 /// ## Returns
 /// - `Ok(Deployment)` - Kubernetes [`Deployment`][Deployment] object
 /// - `Err(String)` - Error trace if error occurs
-async fn create_deployment(client: Client, name: &str, chall_folder_path: Option<&str>) -> Result<Deployment, String> {
+async fn create_deployment(client: &Client, name: &str, chall_folder_path: Option<&str>) -> Result<Deployment, String> {
     let deployments: Api<Deployment> = Api::default_namespaced(client.clone());
 
     info!("Creating deployment");
@@ -406,7 +389,7 @@ async fn create_deployment(client: Client, name: &str, chall_folder_path: Option
         Err(err) => {
             error!("Error fetching challenge params");
             info!("Trace: {:?}", err);
-            return Err(err.to_string());
+            return Err(err);
         }
     };
 
@@ -424,17 +407,14 @@ async fn create_deployment(client: Client, name: &str, chall_folder_path: Option
         return Err("Error creating service schema, check yaml".to_string());
     }
 
-    match deploy_exists(client.clone(), name).await {
+    match deploy_exists(client, name).await {
         Ok(status) => {
             if status {
                 warn!("Deployment already exists, deleting");
-                match delete_deployment(client.clone(), name).await {
-                    Err(err) => {
-                        error!("Error deleting deployment");
-                        debug!("Trace: {:?}", err);
-                        return Err(err.to_string());
-                    },
-                    _ => ()
+                if let Err(err) = delete_deployment(client, name).await {
+                    error!("Error deleting deployment");
+                    debug!("Trace: {:?}", err);
+                    return Err(err);
                 }
             }
         }, 
@@ -515,34 +495,34 @@ fn create_schema_deployment(name: &str, chall_params: &ChallengeParams) -> Resul
         }
     )) {
         Ok(data_deploy) => {
-            return Ok(data_deploy);
+            Ok(data_deploy)
         },
         Err(err) => {
             error!("Error creating deployment schema");
             debug!("Trace: {:?}", err);
-            return Err(err.to_string());
+            Err(err.to_string())
         }
-    };
+    }
 }
 
 // TODO --> Merge delete deployment and service into one function, secret might not be as easy but possible
-pub async fn delete_deployment(client : Client, name : &str) -> Result<(), String> {
-    info!("Deleting deployment {:?}", name);
+pub async fn delete_deployment(client : &Client, name : &str) -> Result<(), String> {
+    info!("Deleting deployment {name}");
     let deployments: Api<Deployment> = Api::default_namespaced(client.clone());
     deployments.delete(name, &DeleteParams::default()).await.unwrap();
-    info!("Successfully deleted deployment {:?}", name);
+    info!("Successfully deleted deployment {name}");
     Ok(())
 }
 
-pub async fn delete_service(client: Client, name : &str) -> Result<(), String> {
-    info!("Deleting service {:?}", name);
+pub async fn delete_service(client: &Client, name : &str) -> Result<(), String> {
+    info!("Deleting service {name}");
     let services: Api<Service> = Api::default_namespaced(client.clone());
-    services.delete(format!("{}-service", name).as_str(), &DeleteParams::default()).await.unwrap();
-    info!("Successfully deleted service {:?}", name);
+    services.delete(format!("{name}-service").as_str(), &DeleteParams::default()).await.unwrap();
+    info!("Successfully deleted service {name}");
     Ok(())
 }
 
-pub async fn delete_secret(client: Client, name : &str) -> Result<String, String> {
+pub async fn delete_secret(client: &Client, name : &str) -> Result<String, String> {
     info!("Deleting Kubernetes secret \"{}\"...", name);
     let secrets: Api<Secret> = Api::default_namespaced(client.clone());
     let status = match secrets.delete(name, &DeleteParams::default()).await {
@@ -558,27 +538,27 @@ pub async fn delete_secret(client: Client, name : &str) -> Result<String, String
         
     match status.right() {
         Some(status) => {
-            if status.status == "Success" {
+            if status.is_success() {
                 info!("Successfully deleted secret {:?}", name);
-                return Ok("Successfully deleted secret".to_string());
+                Ok("Successfully deleted secret".to_string())
             } else {
                 error!("Error deleting secret {:?}", name);
                 debug!("{:?}", status);
-                return Err("Error deleting secret".to_string());
+                Err("Error deleting secret".to_string())
             }
         },
         None => {
             error!("Error deleting secret {:?}", name);
-            return Err("Error deleting secret".to_string());
+            Err("Error deleting secret".to_string())
         }
     }
 }
 
-pub async fn delete_challenge(client : Client, name_list : Vec<&str>) -> Result<(), String> {
+pub async fn delete_challenge(client : &Client, name_list : Vec<&str>) -> Result<(), String> {
     for name in name_list {
         info!("Deleting challenge {:?}", name);
 
-        let dep_exists = match deploy_exists(client.clone(), name).await {
+        let dep_exists = match deploy_exists(client, name).await {
             Ok(deploy_exists) => deploy_exists,
             Err(err) => {
                 error!("Error checking if deployment exists");
@@ -587,7 +567,7 @@ pub async fn delete_challenge(client : Client, name_list : Vec<&str>) -> Result<
             }
         };
         
-        let serv_exists = match service_exists(client.clone(), name).await {
+        let serv_exists = match service_exists(client, name).await {
             Ok(service_exists) => service_exists,
             Err(err) => {
                 error!("Error checking if service exists");
@@ -597,18 +577,18 @@ pub async fn delete_challenge(client : Client, name_list : Vec<&str>) -> Result<
         };
     
         if dep_exists {
-            delete_deployment(client.clone(), name).await?;
+            delete_deployment(client, name).await?;
         } else {
-            warn!("Skipping...deployment {:?} does not exist", name);
+            warn!("Skipping...deployment {name} does not exist");
         }
         
         if serv_exists {
-            delete_service(client.clone(), name).await?;
+            delete_service(client, name).await?;
         } else {
-            warn!("Skipping...service {:?} does not exist", format!("{}-service", name));
+            warn!("Skipping...service {name}-service does not exist"); 
         }
     
-        info!("Successfully deleted challenge {:?}", name);
+        info!("Successfully deleted challenge {name}");
     }
     
     Ok(())
@@ -616,49 +596,20 @@ pub async fn delete_challenge(client : Client, name_list : Vec<&str>) -> Result<
 
 
 // TODO - Reduce down to one function
-async fn deploy_exists(client: Client, name : &str) -> Result<bool, Error> {
+async fn deploy_exists(client: &Client, name : &str) -> Result<bool, Error> {
     let deployments: Api<Deployment> = Api::default_namespaced(client.clone());
-    if let Some(_deployment) = deployments.get_opt(name).await? {
-        return Ok(true);
-    } else {
-        return Ok(false);
-    }
+    Ok(deployments.get_opt(name).await?.is_some())
 }
 
-async fn service_exists(client: Client, name : &str) -> Result<bool, Error> {
+async fn service_exists(client: &Client, name : &str) -> Result<bool, Error> {
     let services: Api<Service> = Api::default_namespaced(client.clone());
-    if let Some(_service) = services.get_opt(format!("{}-service", name).as_str()).await? {
-        return Ok(true);
-    } else {
-        return Ok(false);
-    }
+    Ok(services.get_opt(format!("{name}-service").as_str()).await?.is_some())
 }
 
-async fn secret_exists(client: Client, name : &str) -> Result<bool, Error> {
+async fn secret_exists(client: &Client, name : &str) -> Result<bool, Error> {
     let secrets: Api<Secret> = Api::default_namespaced(client.clone());
-    if let Some(_secret) = secrets.get_opt(name).await? {
-        return Ok(true);
-    } else {
-        return Ok(false);
-    }
+    Ok(secrets.get_opt(name).await?.is_some())
 }
-
-// TODO --> Improve environment var system
-/// Helper function to simplify environment var fetching
-/// 
-/// ## Returns
-/// - `Ok(String)` - Contents of the given environment variable with `env_name`
-/// - `Err(String)` - Error trace that occurred when trying to read the variable
-// fn get_env(env_name: &str) -> Result<String, String> {
-//     match env::var(env_name) {
-//         Ok(val) => Ok(val.to_string()),
-//         Err(e) => {
-//             error!("Error reading \"{}\" env var", env_name);
-//             debug!("Trace: {:?}", e);
-//             return Err(e.to_string());
-//         }
-//     }
-// }
 
 /// Helper function to simplify fetching the base challenge folder
 /// 
@@ -674,16 +625,4 @@ pub fn get_chall_folder(chall_folder_path: Option<&str>) -> String {
         debug!("Using default chall folder");
         chall_folder_default()
     }.to_string()
-    // match chall_folder_path {
-    //     Some(chall_folder_path) => Ok(chall_folder_path.to_string()),
-    //     None => chall_folder_default() {
-    //             Ok(path) => Ok(path.to_string()),
-    //             Err(e) => {
-    //                 error!("Error getting challenge folder path");
-    //                 info!("Trace: {:?}", e);
-    //                 Err(e.to_string())
-    //             }
-    //         }
-    //     }
-    // }
 }

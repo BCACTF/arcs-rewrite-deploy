@@ -1,16 +1,13 @@
-use dotenv::dotenv;
 use env::chall_folder_default;
 use shiplift::container::ContainerInfo;
 use shiplift::image::ImageBuildChunk;
 use std::borrow::Borrow;
-use std::fs::{self, read_dir};
-use std::io::{Error as IOError};
-use std::collections::HashSet;
+use std::fs::read_dir;
 
 use shiplift::{Docker, image::{PushOptions, PullOptions, BuildOptions, ImageInfo}};
 
 use std::default::Default;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 
 mod env;
 pub use env::check_env_vars;
@@ -25,17 +22,6 @@ pub mod logging {
 use logging::*;
 
 use crate::env::{reg_url, reg_username, reg_password};
-
-pub enum VerifyEnvError {
-    VerifyFailed(Vec<String>),
-    IOError(IOError),
-}
-
-impl From<IOError> for VerifyEnvError {
-    fn from(err: IOError) -> Self {
-        VerifyEnvError::IOError(err)
-    }
-}
 
 /// Creates the [`Docker`][Docker] client for use throughout the deployment process
 /// 
@@ -86,7 +72,7 @@ pub async fn retrieve_containers(docker: &Docker) -> Result <Vec<ContainerInfo>,
     }
 }
 
-// todo --> fix error propagation, make them return not strings and an actual error type 
+// TODO --> fix error propagation, make them return not strings and an actual error type 
 /// Builds a Docker image from the Dockerfile contained in the folder with a given `chall_name`
 /// 
 /// Currently assumes Dockerfile is in the root of the challenge folder provided
@@ -156,40 +142,6 @@ pub async fn build_image(docker: &Docker, list_chall_names : Vec<&str>) -> Resul
     }
 
     Ok(())
-}
-
-/// Helper function to ensure that all required environment variables are set
-/// 
-/// Reads in the `.required_envs` file and checks that all of the environment variables listed in that file are set
-/// 
-/// ## Returns
-/// - `Ok(())` - All required environment variables are set
-/// - `Err(VerifyEnvError)` - Error indicating that a variable was not set. Logs the list of missing variables
-pub fn verify_env() -> Result<(), VerifyEnvError> {
-    use logging::*;
-
-    dotenv().ok();
-    let mut missing_env_vars: Vec<String> = Vec::new();
-
-    let req_envs_string = fs::read_to_string(".required_envs")?;
-    let req_envs: Vec<&str> = req_envs_string.lines().collect();
-
-    let vars: Vec<String> = std::env::vars().map(|(var_name, _)| var_name).collect();
-
-    let existing_envs: HashSet<&str> = vars.iter().map(String::as_str).collect();
-
-    for env in req_envs {
-        if !existing_envs.contains(env) {
-            error!("Missing required environment variable: {}", env);
-            missing_env_vars.push(env.to_string());
-        }
-    }
-    if !missing_env_vars.is_empty() {
-        Err(VerifyEnvError::VerifyFailed(missing_env_vars))
-    } else {
-        info!("Environment variables verified");
-        Ok(())
-    }
 }
 
 // TODO --> add support for admin bot challenges (or challs w multiple dockerfiles) (most likely admin bot connection will be dealt w/ k8s side)
@@ -263,7 +215,7 @@ pub fn fetch_chall_folder_names() -> Result<Vec<String>, String> {
             error!("Error fetching challenge folder directory");
             debug!("Trace: {}", err);
             debug!("Path provided: {}", local_repo_path.to_string_lossy());
-            return Err(err.to_string());
+            Err(err.to_string())
         }
     }
 }
@@ -274,16 +226,16 @@ pub async fn build_all_images(docker : &Docker) -> Result<String, String> {
         Ok(names) => {
             let available_challs_to_deploy : Vec<&str> = names.iter().map(AsRef::as_ref).collect();
             info!("Attempting to build all challenges...");
-            build_image(&docker, available_challs_to_deploy).await?;
+            build_image(docker, available_challs_to_deploy).await?;
             info!("Successfully built all images.");
-            return Ok("Successfully built all images.".to_string());
+            Ok("Successfully built all images.".to_string())
         },
         Err(err) => {
             error!("Error fetching folder names");
             debug!("Trace: {}", err);
-            return Err(err.to_string());
+            Err(err)
         }
-    };
+    }
 }
 
 // TODO --> Write own push function that impl stream to better update users on progress
@@ -302,7 +254,7 @@ pub async fn push_image(docker: &Docker, name: &str) -> Result<(), String> {
     let auth = shiplift::RegistryAuth::builder()
         .username(registry_username)
         .password(registry_password)
-        .server_address(registry_url.clone())
+        .server_address(registry_url)
         .build();
 
     let mut complete_url = PathBuf::from(registry_url);
@@ -415,19 +367,7 @@ pub async fn delete_image(docker: &Docker, name: &str) -> Result<(), String> {
         Err(e) => {
             warn!("Error deleting image");
             error!("Trace: {:?}", e);
-            return Err(e.to_string());
+            Err(e.to_string())
         }
     }
 }
-
-// /// Helper function to just simplify and clean up environment variable fetching
-// fn get_env(env_name: &str) -> Result<String, String> {
-//     match env::var(env_name) {
-//         Ok(val) => Ok(val.to_string()),
-//         Err(e) => {
-//             error!("Error reading \"{}\" env var", env_name);
-//             debug!("Trace: {:?}", e);
-//             return Err(e.to_string());
-//         }
-//     }
-// }

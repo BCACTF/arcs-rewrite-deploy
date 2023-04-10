@@ -105,7 +105,7 @@ pub async fn deploy_challenge(
 
     pull_challenge(docker, name, polling_id).await?;
     
-    match create_full_k8s_deployment(k8s, vec![name], Some(&chall_folder)).await {
+    match create_full_k8s_deployment(&k8s, vec![name], Some(&chall_folder)).await {
         Ok(ports) => {
             if ports.is_empty() { 
                 error!("Error deploying {} ({polling_id}) to k8s cluster", name);
@@ -132,7 +132,7 @@ pub async fn delete_challenge(docker: Docker, client: Client, meta: Metadata) ->
     warn!("Deleting {}...", name);
 
     // TODO: Use the variables! (better logs please)
-    match delete_k8s_challenge(client, vec![name.as_str()]).await {
+    match delete_k8s_challenge(&client, vec![name.as_str()]).await {
         Ok(_) => {
             info!("Successfully deleted {} from Kubernetes cluster", name);
             "Success deleting Kubernetes deployment/service".to_string()

@@ -46,7 +46,7 @@ mod implementation_of_deserialize_for_network_protocol {
                 
                 let (port, protocol) = network_protocol_string
                     .split_once('/')
-                    .ok_or(NetProtDeErr::NoSlash.custom())?;
+                    .ok_or_else(|| NetProtDeErr::NoSlash.custom())?;
                 
                 let port: u32 = port
                     .parse()
