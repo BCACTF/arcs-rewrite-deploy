@@ -1,3 +1,5 @@
+use std::{path::PathBuf, fs::read_to_string};
+
 use reqwest::Client;
 
 #[allow(unused_macros)]
@@ -8,19 +10,71 @@ pub mod logging {
 
 use logging::*;
 
-mod env;
-
+pub mod env;
 use env::*;
 
-pub async fn deploy_static_chall(name: &str) {
-    info!("Deploying static challenge: {}", name);
+use arcs_yaml_parser::{YamlShape, YamlVerifyError, File};
+
+pub fn fetch_chall_yaml(chall_folder_name: &str) -> Option<Result<YamlShape, YamlVerifyError>> {
+    let folder_path = PathBuf::from_iter([chall_folder_default(), chall_folder_name]);
+    let yaml_path = folder_path.join("chall.yaml");
+    let yaml_data = read_to_string(&yaml_path).ok()?;
+
+    Some(YamlShape::try_from_str(&yaml_data, &Default::default(), Some(&folder_path)))
+}
+
+
+
+pub async fn deploy_static_files(chall_name: &str) -> Result<Vec<File>, Vec<File>> {
+    info!("Deploying static challenge: {}", chall_name);
     let client = Client::new();
+
+    let yaml = fetch_chall_yaml(chall_name).unwrap().unwrap();
+    let files: Vec<File> = yaml
+        .file_iter()
+        .into_iter()
+        .flatten()
+        .cloned()
+        .collect();
+
+
+    let mut success = vec![];
+    let mut failure = vec![];
+
+    for file in files {
+        let url = {
+            let base = s3_bucket_url().trim_matches('/');
+            let chall = chall_name.trim_matches('/');
     
-    let url = format!("{}/{}", s3_bucket_url(), name);
-    let res = client.get(&url).bearer_auth(s3_bearer_token()).send().await;
-    match res {
-        Ok(_) => info!("Successfully deployed static challenge: {}", name),
-        Err(e) => error!("Failed to deploy static challenge: {}", e),
+            let file = if let Some(part) = file.path().to_str() {
+                part
+            } else {
+                failure.push(file);
+                continue;
+            };
+
+            format!("{base}{chall}/{file}")
+        };
+
+        let res = client
+            .post(&url)
+            .bearer_auth(s3_bearer_token())
+            .body(file.data_vec_cloned())
+            .send()
+            .await;
+
+        match res {
+            Ok(res) if res.status().is_success() => success.push(file),
+            error => {
+                error!("Failed to upload file: {:#?}", error);
+                failure.push(file)
+            }
+        }
     }
 
+    if failure.is_empty() {
+        Ok(success)
+    } else {
+        Err(failure)
+    }
 }
