@@ -65,7 +65,6 @@ impl StatusCode {
 
     // Internal Server Errors
     pub const UNKNOWN_ISE: Self = StatusCode { code: 500, message: cowify("Unknown internal server error") };
-    pub const YAML_VERIFY_ERR: Self = StatusCode { code: 501, message: cowify("YAML verification error") };
 
     // deletion errors
     pub const K8S_SERVICE_DEPLOY_DEL_ERR: Self = StatusCode { code: 580, message: cowify("Failure deleting Kubernetes resources") };
@@ -79,6 +78,10 @@ impl StatusCode {
     // deploy process failures
     pub fn req_deploy_process_err(subcode: u64, message: &'static str) -> Self {
         Self { code: 450 + subcode, message: message.into() }
+    }
+    // TODO --> document and organize this
+    pub fn yaml_verify_err(yaml_err: arcs_yaml_parser::YamlVerifyError, message: &'static str) -> Self {
+        Self { code: 501, message: format!("{}. YamlError: {}", message, yaml_err).into() }
     }
 
     // file errors
@@ -254,17 +257,15 @@ impl Response {
     }
 }
 
-// TODO --> Make this better
 impl From<(YamlVerifyError, Metadata)> for Response {
     fn from((yaml_error, meta): (YamlVerifyError, Metadata)) -> Self {
         Self {
-            internal_code: StatusCode::YAML_VERIFY_ERR,
+            internal_code: StatusCode::yaml_verify_err(yaml_error, "Failed to verify yaml"),
             meta: Metadata {
                 ..meta
             },
         }
     }
-
 }
 
 /// Struct that represents the data to be sent back in a response

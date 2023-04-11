@@ -24,14 +24,26 @@ pub fn fetch_chall_yaml(chall_folder_name: &str) -> Option<Result<YamlShape, Yam
     Some(YamlShape::try_from_str(&yaml_data, &Default::default(), Some(&folder_path)))
 }
 
-
-
 pub async fn deploy_static_files(chall_name: &str) -> Result<Vec<File>, Vec<File>> {
     info!("Deploying static challenge: {}", chall_name);
     let client = Client::new();
 
-    // FIXME --> DOUBLE UNWRAPS SUPER BAD
-    let yaml = fetch_chall_yaml(chall_name).unwrap().unwrap();
+    let yaml = match fetch_chall_yaml(chall_name) {
+        Some(yaml_result) => {
+                match yaml_result {
+                    Ok(yaml) => yaml,
+                    Err(e) => {
+                        error!("Failed to parse chall.yaml for {}: {:#?}", chall_name, e);
+                        return Err(vec![]);
+                    },
+                }
+            },
+        None => {
+            error!("Failed to find chall.yaml for challenge: {}", chall_name);
+            return Err(vec![]);
+        }
+    };
+    
     let files: Vec<File> = yaml
         .file_iter()
         .into_iter()
@@ -48,12 +60,18 @@ pub async fn deploy_static_files(chall_name: &str) -> Result<Vec<File>, Vec<File
             let base = s3_bucket_url().trim_matches('/');
             let chall = chall_name.trim_matches('/');
     
-            let file = if let Some(part) = file.path().to_str() {
-                part
+            let file = if let Some(file_path) = file.path().to_str() {
+                if let Some((_, name)) = file_path.rsplit_once("/") {
+                    name
+                } else {
+                    file_path
+                }
             } else {
                 failure.push(file);
                 continue;
             };
+
+            info!("{:?}", file);
 
             format!("{base}{chall}/{file}")
         };

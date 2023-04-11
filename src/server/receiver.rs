@@ -244,12 +244,12 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
 
         if chall_yaml.deploy().is_none() {
             warn!("No deploy section found in challenge yaml for {} ({})", meta.chall_name(), polling_id);
-            // TODO --> Kinda hacky passing in empty vec, fix later probably (please)
+            // TODO --> Kinda hacky passing in empty slice, fix later probably (please)
             if succeed_deployment(polling_id, &[]).is_err() {
                 error!("`succeed_deployment` failed to mark polling id {polling_id} as succeeded");
             }
             
-            match send_deployment_success(&meta, vec![]).await {
+            match send_deployment_success(&meta, None).await {
                 Ok(_) => info!("Successfully sent deployment success message for {} ({})", meta.chall_name(), polling_id),
                 Err(e) => error!("Failed to send deployment success message for {} ({}): {e:?}", meta.chall_name(), polling_id),
             };
@@ -296,7 +296,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
             }
         };
 
-        match send_deployment_success(&meta, ports).await {
+        match send_deployment_success(&meta, Some(ports)).await {
             Ok(_) => info!("Successfully sent deployment success message for {} ({})", meta.chall_name(), polling_id),
             Err(e) => error!("Failed to send deployment success message for {} ({}): {e:?}", meta.chall_name(), polling_id),
         };

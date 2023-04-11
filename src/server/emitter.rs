@@ -7,17 +7,25 @@ use crate::server::responses::Metadata;
 
 // TODO - validate return types of this function
 // TODO - Actually make the SQL, Main, Discord branches send out the correct information
-pub async fn send_deployment_success(meta: &Metadata, ports: Vec<i32>) -> Result<(), String> {
+pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<i32>>) -> Result<(), String> {
     let poll_id = meta.poll_id();
     
     let emitter = Client::new();
+  
+    let discord_message_content: String;
+
+    if let Some(ports) = ports.as_ref() {
+        discord_message_content = format!("Successfully deployed **{}** on port {:?}", meta.chall_name(), ports);
+    } else {
+        discord_message_content = format!("Successfully deployed **{}**. No ports provided", meta.chall_name());
+    }
 
     let jsonbody = json!(
         {
             "_type": "DeploymentSuccess",
             "targets": {
                 "discord": {
-                    "content": format!("Successfully deployed **{}** on port {:?}", meta.chall_name(), ports),
+                    "content": discord_message_content,
                     "urgency": "low"
                 },
                 "frontend": {
