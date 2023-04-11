@@ -1,3 +1,4 @@
+use arcs_yaml_parser::YamlVerifyError;
 use serde::Serialize;
 use serde_json::{ json, Value };
 use crate::polling::{ PollingId, DeploymentStatus };
@@ -28,8 +29,12 @@ const fn cowify(s: &'static str) -> Cow<'static, str> { Cow::Borrowed(s) }
 /// ### 45X - Request Deploy Process Failures
 /// - `450` + **subcode** - Request Deploy Process Failure 
 /// 
+/// ### 46X - File Upload Failures
+/// - `460` - File Upload Failure
+/// 
 /// ### 50X - Internal Server Error
 /// - `500` - Unknown Internal Server Error Occurred
+/// - `501` - YAML Verification Error
 /// 
 /// ### 51X - Client Login Failures
 /// - `510` - Docker Client Failure
@@ -60,6 +65,7 @@ impl StatusCode {
 
     // Internal Server Errors
     pub const UNKNOWN_ISE: Self = StatusCode { code: 500, message: cowify("Unknown internal server error") };
+    pub const YAML_VERIFY_ERR: Self = StatusCode { code: 501, message: cowify("YAML verification error") };
 
     // deletion errors
     pub const K8S_SERVICE_DEPLOY_DEL_ERR: Self = StatusCode { code: 580, message: cowify("Failure deleting Kubernetes resources") };
@@ -73,6 +79,11 @@ impl StatusCode {
     // deploy process failures
     pub fn req_deploy_process_err(subcode: u64, message: &'static str) -> Self {
         Self { code: 450 + subcode, message: message.into() }
+    }
+
+    // file errors
+    pub fn file_upload_err(subcode: u64, message: &'static str) -> Self {
+        Self { code: 460 + subcode, message: message.into() }
     }
 
     // custom failure
@@ -188,6 +199,16 @@ impl Response {
             internal_code: StatusCode::server_deploy_process_err(subcode, message),
         }
     }
+
+    pub fn file_upload_process_err(subcode: u64, message: &'static str, other_data: Option<Value>, meta: Metadata) -> Self {
+        Self {
+            meta: Metadata {
+                other_data,
+                ..meta
+            }, 
+            internal_code: StatusCode::file_upload_err(subcode, message),
+        }
+    }
 }
 
 // 580 endpoints
@@ -231,6 +252,19 @@ impl Response {
             },
         }
     }
+}
+
+// TODO --> Make this better
+impl From<(YamlVerifyError, Metadata)> for Response {
+    fn from((yaml_error, meta): (YamlVerifyError, Metadata)) -> Self {
+        Self {
+            internal_code: StatusCode::YAML_VERIFY_ERR,
+            meta: Metadata {
+                ..meta
+            },
+        }
+    }
+
 }
 
 /// Struct that represents the data to be sent back in a response

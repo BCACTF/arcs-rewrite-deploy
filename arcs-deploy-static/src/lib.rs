@@ -15,6 +15,7 @@ use env::*;
 
 use arcs_yaml_parser::{YamlShape, YamlVerifyError, File};
 
+// TODO --> Move this into yaml crate
 pub fn fetch_chall_yaml(chall_folder_name: &str) -> Option<Result<YamlShape, YamlVerifyError>> {
     let folder_path = PathBuf::from_iter([chall_folder_default(), chall_folder_name]);
     let yaml_path = folder_path.join("chall.yaml");
@@ -29,6 +30,7 @@ pub async fn deploy_static_files(chall_name: &str) -> Result<Vec<File>, Vec<File
     info!("Deploying static challenge: {}", chall_name);
     let client = Client::new();
 
+    // FIXME --> DOUBLE UNWRAPS SUPER BAD
     let yaml = fetch_chall_yaml(chall_name).unwrap().unwrap();
     let files: Vec<File> = yaml
         .file_iter()

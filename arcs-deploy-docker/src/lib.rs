@@ -289,7 +289,7 @@ pub async fn push_image(docker: &Docker, name: &str) -> Result<(), String> {
 pub async fn pull_image(docker: &Docker, name: &str) -> Result<(), String>{
     let registry_username = reg_username();
     let registry_password = reg_password();
-    let registry_url = reg_password();
+    let registry_url = reg_url();
 
     let auth = shiplift::RegistryAuth::builder()
         .username(registry_username)

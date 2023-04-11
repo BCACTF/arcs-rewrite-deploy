@@ -1,6 +1,7 @@
 use arcs_deploy_docker::{ build_image, delete_image as delete_docker_image, push_image, pull_image };
 use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge, get_chall_folder};
 
+use arcs_yaml_parser::{File, YamlVerifyError};
 use kube::{Client};
 use shiplift::Docker;
 use super::responses::{ Metadata, Response };
@@ -10,6 +11,8 @@ use crate::emitter::{send_deployment_success, send_deployment_failure};
 use crate::logging::*;
 use crate::polling::{ PollingId, register_chall_deployment, fail_deployment, succeed_deployment, advance_deployment_step };
 
+use arcs_deploy_static::deploy_static_files;
+
 #[derive(Debug, Clone)]
 pub struct BuildChallengeErr(String);
 
@@ -17,6 +20,7 @@ pub struct BuildChallengeErr(String);
 /// Enum that represents the different errors that can occur during the deploy process
 /// 
 /// ## Variants
+/// - `FileUpload` - Error uploading file(s) to CDN
 /// - `Build` - Error building Docker image
 /// - `Push` - Error pushing to remote Docker registry
 /// - `Pull` - Error pulling from remote Docker registry
@@ -24,6 +28,7 @@ pub struct BuildChallengeErr(String);
 /// - `Deploy` - Error deploying to Kubernetes cluster
 #[derive(Debug, Clone)]
 pub enum DeployProcessErr {
+    FileUpload(Vec<File>),
     Build(String),
     Push(String),
     Pull(String),
@@ -35,6 +40,12 @@ impl From<(DeployProcessErr, Metadata)> for Response {
     fn from((err, meta): (DeployProcessErr, Metadata)) -> Self {
         use DeployProcessErr::*;
         match err {
+            FileUpload(files) => Response::server_deploy_process_err(
+                0,
+                "Error uploading file(s) to CDN",
+                Some(json!({ "files": files })),
+                meta,
+            ),
             Build(s) => Response::server_deploy_process_err(
                 1,
                 "Error building docker image",
@@ -197,6 +208,55 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
     let spawn_meta = meta.clone();
     tokio::spawn(async move {
         let meta = spawn_meta;
+
+        if let Err(failed_files) = deploy_static_files(meta.chall_name().as_str()).await {
+            error!("Failed to deploy static files {:?} for {} ({})", failed_files, meta.chall_name(), polling_id);
+            if fail_deployment(polling_id, (DeployProcessErr::FileUpload(failed_files), meta.clone()).into()).is_err() {
+                error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+            }
+            send_failure_message(&meta, "Deploy Static Files").await;
+            return;
+        }
+
+        use arcs_deploy_static::fetch_chall_yaml;
+        let chall_yaml = fetch_chall_yaml(meta.chall_name().as_str());
+        
+        let chall_yaml = if let Some(chall_yaml) = chall_yaml {
+            match chall_yaml {
+                Ok(yaml) => yaml,
+                Err(e) => {
+                    error!("Failed to fetch challenge yaml for {} ({}) with err {:?}", meta.chall_name(), polling_id, e);
+                    if fail_deployment(polling_id, (e, meta.clone()).into()).is_err() {
+                        error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+                    }
+                    send_failure_message(&meta, "Fetch Challenge YAML").await;
+                    return;
+                }
+            }
+        } else {
+            error!("Failed to fetch challenge yaml for {} ({})", meta.chall_name(), polling_id);
+            if fail_deployment(polling_id, (YamlVerifyError::OsError, meta.clone()).into()).is_err() {
+                error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+            }
+            send_failure_message(&meta, "Fetch Challenge YAML").await;
+            return;
+        };
+
+        if chall_yaml.deploy().is_none() {
+            warn!("No deploy section found in challenge yaml for {} ({})", meta.chall_name(), polling_id);
+            // TODO --> Kinda hacky passing in empty vec, fix later probably (please)
+            if succeed_deployment(polling_id, &[]).is_err() {
+                error!("`succeed_deployment` failed to mark polling id {polling_id} as succeeded");
+            }
+            
+            match send_deployment_success(&meta, vec![]).await {
+                Ok(_) => info!("Successfully sent deployment success message for {} ({})", meta.chall_name(), polling_id),
+                Err(e) => error!("Failed to send deployment success message for {} ({}): {e:?}", meta.chall_name(), polling_id),
+            };
+
+            return;
+        }
+
         if let Err(build_err) = build_challenge(docker.clone(), &name, polling_id).await {
             error!("Failed to build `{name}` ({polling_id}) with err {build_err:?}");
             if fail_deployment(polling_id, (build_err, meta.clone()).into()).is_err() {
