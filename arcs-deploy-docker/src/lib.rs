@@ -1,7 +1,8 @@
 use env::chall_folder_default;
+use futures::TryStreamExt;
 use shiplift::container::ContainerInfo;
 use shiplift::image::ImageBuildChunk;
-use std::borrow::Borrow;
+use std::{borrow::Borrow, path::Path};
 use std::fs::read_dir;
 
 use shiplift::{Docker, image::{PushOptions, PullOptions, BuildOptions, ImageInfo}};
@@ -370,4 +371,39 @@ pub async fn delete_image(docker: &Docker, name: &str) -> Result<(), String> {
             Err(e.to_string())
         }
     }
+}
+// TODO --> make this nicer, feels really hacky atm
+pub async fn fetch_container_file(docker: &Docker, container_name: &str, file_path: &Path) -> Result<Vec<u8>, String> {
+    let reg_url = reg_url();
+
+    let container_info = if let Some(container) = retrieve_containers(docker).await?
+        .into_iter()
+        .find(|container| {
+            let non_id_name = if let Some((name, _)) = container.image.split_once("@") {
+                name
+            } else {
+                container.image.as_str()
+            };
+            non_id_name == format!("{}/{}", reg_url, container_name)
+        })
+        {
+            container
+        } else {
+            error!("Container '{}' not found", container_name);
+            return Err(format!("Container '{}' not found", container_name));
+        };
+
+    let container = docker.containers().get(container_info.id);
+
+    let file = container.copy_from(file_path);
+    let data = match file.try_concat().await {
+        Ok(data) => data,
+        Err(e) => {
+            error!("Error fetching file within Docker container");
+            debug!("Trace: {:?}", e);
+            return Err(e.to_string());
+        }
+    };
+    
+    Ok(data)
 }

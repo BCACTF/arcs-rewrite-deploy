@@ -10,6 +10,11 @@ reqwest = { version = "0.11.15", features=["json"] }
 tokio = { version = "1.20.1", features=["full"] }
 dotenv = "0.15.0"
 
+# Docker-related
+shiplift = { git = "https://github.com/fortanix/shiplift", branch = "master" }
+tar = "0.4.38"
+
 arcs-deploy-logging = { version = "0.1.0", path = "../arcs-deploy-logging" }
 arcs-deploy-env = { version = "0.1.0", path = "../arcs-deploy-env" }
 arcs-yaml-parser = { version = "0.1.0", path = "../arcs-yaml" }
+arcs-deploy-docker = { version = "0.1.0", path = "../arcs-deploy-docker" }

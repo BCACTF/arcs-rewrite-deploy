@@ -209,18 +209,10 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
     tokio::spawn(async move {
         let meta = spawn_meta;
 
-        if let Err(failed_files) = deploy_static_files(meta.chall_name().as_str()).await {
-            error!("Failed to deploy static files {:?} for {} ({})", failed_files, meta.chall_name(), polling_id);
-            if fail_deployment(polling_id, (DeployProcessErr::FileUpload(failed_files), meta.clone()).into()).is_err() {
-                error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
-            }
-            send_failure_message(&meta, "Deploy Static Files").await;
-            return;
-        }
-
         use arcs_deploy_static::fetch_chall_yaml;
         let chall_yaml = fetch_chall_yaml(meta.chall_name().as_str());
-        
+
+
         let chall_yaml = if let Some(chall_yaml) = chall_yaml {
             match chall_yaml {
                 Ok(yaml) => yaml,
@@ -242,7 +234,17 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
             return;
         };
 
+        
         if chall_yaml.deploy().is_none() {
+            if let Err(failed_files) = deploy_static_files(&docker, meta.chall_name().as_str()).await {
+                error!("Failed to deploy static files {:?} for {} ({})", failed_files, meta.chall_name(), polling_id);
+                if fail_deployment(polling_id, (DeployProcessErr::FileUpload(failed_files), meta.clone()).into()).is_err() {
+                    error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+                }
+                send_failure_message(&meta, "Deploy Static Files").await;
+                return;
+            }
+
             warn!("No deploy section found in challenge yaml for {} ({})", meta.chall_name(), polling_id);
             // TODO --> Kinda hacky passing in empty slice, fix later probably (please)
             if succeed_deployment(polling_id, &[]).is_err() {
@@ -257,6 +259,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
             return;
         }
 
+        // DOCKER CHALLENGES BUILD STARTING FROM HERE, STATIC CHALLS ALREADY RETURNED
         if let Err(build_err) = build_challenge(docker.clone(), &name, polling_id).await {
             error!("Failed to build `{name}` ({polling_id}) with err {build_err:?}");
             if fail_deployment(polling_id, (build_err, meta.clone()).into()).is_err() {
@@ -295,6 +298,15 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
                 return;
             }
         };
+
+        if let Err(failed_files) = deploy_static_files(&docker, meta.chall_name().as_str()).await {
+            error!("Failed to deploy static files {:?} for {} ({})", failed_files, meta.chall_name(), polling_id);
+            if fail_deployment(polling_id, (DeployProcessErr::FileUpload(failed_files), meta.clone()).into()).is_err() {
+                error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+            }
+            send_failure_message(&meta, "Deploy Static Files").await;
+            return;
+        }
 
         match send_deployment_success(&meta, Some(ports)).await {
             Ok(_) => info!("Successfully sent deployment success message for {} ({})", meta.chall_name(), polling_id),
