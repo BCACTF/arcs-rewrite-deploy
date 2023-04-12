@@ -2,7 +2,7 @@ use arcs_deploy_docker::{ build_image, delete_image as delete_docker_image, push
 use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge, get_chall_folder};
 
 use arcs_yaml_parser::{File, YamlVerifyError};
-use kube::{Client};
+use kube::Client;
 use shiplift::Docker;
 use super::responses::{ Metadata, Response };
 use serde_json::json;
@@ -154,6 +154,7 @@ pub async fn delete_challenge(docker: Docker, client: Client, meta: Metadata) ->
             return Response::k8s_service_deploy_del_err(e, meta); 
         } 
     };
+    // TODO --> add delete docker container so things delete properly
 
     // TODO: Use the variables! (better logs please)
     #[allow(unused_variables)]

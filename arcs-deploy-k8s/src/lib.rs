@@ -1,9 +1,11 @@
 use env::chall_folder_default;
+use futures::StreamExt;
 use k8s_openapi::api::{core::v1::{Pod, Service, Secret}, 
                   apps::v1::Deployment};
 use kube::{Client, Api, Error, 
            core::ObjectList,
            api::{ListParams, PostParams, DeleteParams}};
+use kube_runtime::{watcher::Config, WatchStreamExt};
 use std::{fs::File, io::Read, path::PathBuf, collections::HashMap};
 pub mod network_protocol;
 mod env;
@@ -131,6 +133,7 @@ pub async fn get_pods(client : &Client) -> Result<ObjectList<Pod>, String> {
 // TODO --> Add support for admin bot stuff
 // TODO --> Return list of challenges with their respective addresses to access (look into load balancer ingresses and such)
 // TODO --> Load balancing
+// TODO --> if pods are in a crashloopbackoff or imagepullbackoff, or basically anything that isn't running by the end of it, and restarts > 3 or something, mark as failed because chall not up
 
 /// Sets up a full Kubernetes deployment for every challenge in `name_list`. 
 /// 
@@ -426,6 +429,48 @@ async fn create_deployment(client: &Client, name: &str, chall_folder_path: Optio
     match deployments.create(&PostParams::default(), &data_deploy).await {
         Ok(deployment_instance) => {
             info!("Deployment {} created", name);
+            let watcher_config = Config {
+                label_selector: Some(format!("app={}", name)),
+                ..Config::default()
+            };
+
+            let mut stream = kube_runtime::watcher(deployments, watcher_config).applied_objects().boxed();
+
+            while let Some(data) = stream.next().await {
+                match data {
+                    Ok(deployment) => {
+                        if let Some(deploystat) = deployment.status {
+                            let conditions = deploystat.conditions;
+                            info!("{:?}", conditions);
+                            if let Some(unwrapped) = conditions {
+                                let status = &unwrapped[0].status;
+                                let type_of_status = &unwrapped[0].type_;
+                                
+                                if type_of_status == "Available" {
+                                    if status == "True" {
+                                        info!("Deployment ready");
+                                        break;
+                                    } else {
+                                        // TODO --> validate that this is the case here
+                                        info!("Minimum availablility not met yet...");
+                                    }
+                                } else if type_of_status == "Progressing" {
+                                    info!("Deployment in progress...");
+                                } else if type_of_status == "ReplicaFailure" {
+                                    error!("Error occurred while deploying");
+                                    return Err("Error occurred while deploying".to_string());
+                                }
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        error!("Error watching deployment");
+                        debug!("Trace: {:?}", err);
+                        return Err(err.to_string());
+                    }
+                }
+            }
+
             Ok(deployment_instance)
         },
         Err(err) => {
@@ -434,6 +479,7 @@ async fn create_deployment(client: &Client, name: &str, chall_folder_path: Optio
             Err(err.to_string())
         }
     }
+
 }
 
 /// Generates a Kubernetes [`Deployment`][Deployment] object from the current deployment schema for a given challenge
