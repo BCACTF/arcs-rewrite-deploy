@@ -194,6 +194,61 @@ pub async fn create_challenge(client : &Client, name_list : Vec<&str>, chall_fol
             }
         };
 
+        // just checks to see if the pods are actually running
+        // TODO --> If a chall has multiple pods, possibly make this run only once if a pod errors out
+        match get_pods(client).await {
+            Ok(pods) => {
+                let failed_pods : Vec<Pod> = pods
+                    .into_iter()
+                    .filter(|pod| {
+                        let pod_name = if pod.metadata.name.as_ref().is_some() {
+                            pod.metadata.name.as_ref().unwrap()
+                        } else {
+                            error!("No pod name found");
+                            return false;
+                        };
+
+                        if !pod_name.starts_with(name) {
+                            return false;
+                        } else {
+                            info!("Pod Found: {:?}", pod_name);
+                        }
+
+                        let podstatus = if pod.status.as_ref().is_none() {
+                            error!("No pod status found");
+                            return false;
+                        } else {
+                            pod.status.as_ref().unwrap()
+                        };
+
+                        let phase = if podstatus.phase.as_ref().is_none() {
+                            error!("Pod phase not found");
+                            return false;
+                        } else {
+                            podstatus.phase.as_ref().unwrap()
+                        };
+
+                        if phase != "Running" {
+                            error!("Pods are not running... check the logs");
+                            return true;
+                        } else {
+                            info!("Pod is found and is actually running.");
+                            return false;
+                        }
+                    })
+                    .collect();
+                if !failed_pods.is_empty() {
+                    error!("Pods are not running... check the logs");
+                    return Err("Pods are not running... check the logs".to_string());
+                }
+            },
+            Err(err) => {
+                error!("Error retrieving pods");
+                info!("Trace: {:?}", err);
+                return Err(err);
+            }
+        }
+
         info!("Challenge {name} successfully created --> port {service_port}");
         port_list.push(service_port);
     }
@@ -441,7 +496,6 @@ async fn create_deployment(client: &Client, name: &str, chall_folder_path: Optio
                     Ok(deployment) => {
                         if let Some(deploystat) = deployment.status {
                             let conditions = deploystat.conditions;
-                            info!("{:?}", conditions);
                             if let Some(unwrapped) = conditions {
                                 let status = &unwrapped[0].status;
                                 let type_of_status = &unwrapped[0].type_;
@@ -563,9 +617,17 @@ pub async fn delete_deployment(client : &Client, name : &str) -> Result<(), Stri
 pub async fn delete_service(client: &Client, name : &str) -> Result<(), String> {
     info!("Deleting service {name}");
     let services: Api<Service> = Api::default_namespaced(client.clone());
-    services.delete(format!("{name}-service").as_str(), &DeleteParams::default()).await.unwrap();
-    info!("Successfully deleted service {name}");
-    Ok(())
+    match services.delete(format!("{name}-service").as_str(), &DeleteParams::default()).await {
+        Ok(_) => {
+            info!("Successfully deleted service {name}");
+            Ok(())
+        },
+        Err(err) => {
+            error!("Error deleting service {name}");
+            debug!("Trace: {:?}", err);
+            Err(err.to_string())
+        }
+    }
 }
 
 pub async fn delete_secret(client: &Client, name : &str) -> Result<String, String> {
