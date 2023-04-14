@@ -167,6 +167,7 @@ pub async fn deploy_static_files(docker: &Docker, chall_name: &str) -> Result<Ve
             Ok(res) if res.status().is_success() => success.push(file),
             error => {
                 error!("Failed to upload file: {:#?}", error);
+                warn!("Ensure CDN auth token is valid.");
                 failure.push(file)
             }
         }

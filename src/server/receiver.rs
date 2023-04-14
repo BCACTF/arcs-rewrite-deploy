@@ -309,6 +309,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
             return;
         }
 
+        // TODO --> on a failed to parse file path or other yaml error here, send out a deploy failure message (or try to at least)
         match send_deployment_success(&meta, Some(ports)).await {
             Ok(_) => info!("Successfully sent deployment success message for {} ({})", meta.chall_name(), polling_id),
             Err(e) => error!("Failed to send deployment success message for {} ({}): {e:?}", meta.chall_name(), polling_id),
