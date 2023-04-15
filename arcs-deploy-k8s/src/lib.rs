@@ -198,46 +198,56 @@ pub async fn create_challenge(client : &Client, name_list : Vec<&str>, chall_fol
         // TODO --> If a chall has multiple pods, possibly make this run only once if a pod errors out
         match get_pods(client).await {
             Ok(pods) => {
-                let failed_pods : Vec<Pod> = pods
+                // Not really sure if the best approach here is looking at # of failed or # of succeeded..
+                // TODO - get min replicas, if succeeded pods >= min replicas, chall is fine
+                let succeeded_pods : Vec<Pod> = pods
                     .into_iter()
                     .filter(|pod| {
-                        let pod_name = if pod.metadata.name.as_ref().is_some() {
-                            pod.metadata.name.as_ref().unwrap()
-                        } else {
-                            error!("No pod name found");
-                            return false;
+                        let pod_name = match pod.metadata.name.as_ref() {
+                            Some(name) => name,
+                            None => {
+                                error!("No pod name found");
+                                return false;
+                            }
                         };
-
+                        
                         if !pod_name.starts_with(name) {
                             return false;
                         } else {
                             info!("Pod Found: {:?}", pod_name);
                         }
 
-                        let podstatus = if pod.status.as_ref().is_none() {
-                            error!("No pod status found");
-                            return false;
-                        } else {
-                            pod.status.as_ref().unwrap()
+                        let podstatus = match pod.status.as_ref() {
+                            Some(status) => status,
+                            None => {
+                                error!("No pod status found");
+                                return false;
+                            }
                         };
 
-                        let phase = if podstatus.phase.as_ref().is_none() {
-                            error!("Pod phase not found");
-                            return false;
-                        } else {
-                            podstatus.phase.as_ref().unwrap()
+                        let phase = match podstatus.phase.as_ref() {
+                            Some(phase) => phase,
+                            None => {
+                                error!("Pod phase not found");
+                                return false;
+                            }
                         };
 
                         if phase != "Running" {
                             error!("Pods are not running... check the logs");
-                            return true;
+                            return false;
                         } else {
                             info!("Pod is found and is actually running.");
-                            return false;
+                            return true;
                         }
                     })
                     .collect();
-                if !failed_pods.is_empty() {
+
+                // if let Some(minpods) = service.status.map(| spec | spec.conditions ).flatten() {
+                //     info!("Min Pods: {:?}", minpods);
+                // }
+                
+                if succeeded_pods.is_empty() {
                     error!("Pods are not running... check the logs");
                     return Err("Pods are not running... check the logs".to_string());
                 }

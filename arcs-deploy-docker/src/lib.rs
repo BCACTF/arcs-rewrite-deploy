@@ -73,7 +73,10 @@ pub async fn retrieve_containers(docker: &Docker) -> Result <Vec<ContainerInfo>,
     }
 }
 
+
+
 // TODO --> fix error propagation, make them return not strings and an actual error type 
+// todo --> update documentation for this function
 /// Builds a Docker image from the Dockerfile contained in the folder with a given `chall_name`
 /// 
 /// Currently assumes Dockerfile is in the root of the challenge folder provided
@@ -89,58 +92,60 @@ pub async fn retrieve_containers(docker: &Docker) -> Result <Vec<ContainerInfo>,
 /// ## Returns
 /// - `Ok(())` - Image(s) built successfully
 /// - `Err(String)` - Error trace
-pub async fn build_image(docker: &Docker, list_chall_names : Vec<&str>) -> Result<(), String> {
+pub async fn build_image(docker: &Docker, chall_folder_name : &str, inner_path: Option<&Path>) -> Result<(), String> {
     let challenge_folder = chall_folder_default();
     let registry_url = reg_url();
 
-    let path_to_registry = PathBuf::from(registry_url);
+    info!("Creating image for: {:?}", chall_folder_name);
 
-    'chall_to_build: for chall_name in list_chall_names{
-        info!("Creating image for: {:?}", chall_name);
-        let mut challenge_path = PathBuf::from(challenge_folder);
-        let mut full_registry_path = path_to_registry.clone();
-        
-        challenge_path.push(chall_name);
-        full_registry_path.push(chall_name);
+    let challenge_path: PathBuf;
+    let full_registry_path: PathBuf;
 
-        let build_options = BuildOptions::builder(challenge_path.to_string_lossy().to_string())
-            .tag(full_registry_path.to_string_lossy())
-            .dockerfile("Dockerfile")
-            .rm(true)
-            .build();
-            
-        let mut stream = docker.images().build(&build_options);
-        while let Some(build_result) = stream.next().await {
-            match build_result {
-                Ok(output) => {
-                    match output.borrow() {
-                        ImageBuildChunk::Update {stream} => {
-                            trace!("{:?}", stream);
-                        },
-                        ImageBuildChunk::Error {error, ..} => {
-                            error!("Error building {:?}", chall_name);
-                            debug!("Trace: {:?}", error);
-                            warn!("Skipping challenge {:?}, check logs for details...", chall_name);
-                            continue 'chall_to_build;
-                        }, 
-                        ImageBuildChunk::Digest {aux} => {
-                            info!("Image digest: {:?}", aux);
-                        }
-                        ImageBuildChunk::PullStatus { .. } => {
-                            trace!("{:?}", output);
-                        }
-                    }
-                },
-                Err(e) => {
-                    error!("Error building docker image");
-                    debug!("Docker image build error: {:?}", e);
-                    continue 'chall_to_build;
-                },
-            }
-        }
-        
-        info!("{:?} image has been built", chall_name);
+    if let Some(sub_chall_folder) = inner_path {
+        challenge_path = PathBuf::from_iter([Path::new(challenge_folder), Path::new(chall_folder_name), sub_chall_folder]);
+        full_registry_path = PathBuf::from_iter([Path::new(registry_url), Path::new(chall_folder_name), sub_chall_folder]);
+    } else {
+        challenge_path = PathBuf::from_iter([Path::new(challenge_folder), Path::new(chall_folder_name)]);
+        full_registry_path = PathBuf::from_iter([Path::new(registry_url), Path::new(chall_folder_name)]);
     }
+
+    let build_options = BuildOptions::builder(challenge_path.to_string_lossy().to_string())
+        .tag(full_registry_path.to_string_lossy())
+        .dockerfile("Dockerfile")
+        .rm(true)
+        .build();
+        
+    let mut stream = docker.images().build(&build_options);
+    while let Some(build_result) = stream.next().await {
+        match build_result {
+            Ok(output) => {
+                match output.borrow() {
+                    ImageBuildChunk::Update {stream} => {
+                        trace!("{:?}", stream);
+                    },
+                    ImageBuildChunk::Error {error, ..} => {
+                        error!("Error building {:?}", chall_folder_name); // if this is a subfolder error, just says challname
+                        debug!("Trace: {:?}", error);
+                        warn!("Skipping challenge {:?}, check logs for details...", chall_folder_name);
+                        return Err(error.to_string());
+                    }, 
+                    ImageBuildChunk::Digest {aux} => {
+                        info!("Image digest: {:?}", aux);
+                    }
+                    ImageBuildChunk::PullStatus { .. } => {
+                        trace!("{:?}", output);
+                    }
+                }
+            },
+            Err(e) => {
+                error!("Error building docker image");
+                debug!("Docker image build error: {:?}", e);
+                return Err(e.to_string());
+            },
+        }
+    }
+    
+    info!("{:?} image has been built", chall_folder_name); // if this is a subfolder error, just says challname
 
     Ok(())
 }
@@ -221,13 +226,17 @@ pub fn fetch_chall_folder_names() -> Result<Vec<String>, String> {
     }
 }
 
+// TODO --> Improve using yaml, iterate through all dirs, if Deploy field specified, follow path and deploy
 /// Quality of life function that builds all images with Dockerfiles that it finds in the `CHALL_FOLDER` direectory
 pub async fn build_all_images(docker : &Docker) -> Result<String, String> {
     match fetch_chall_folder_names() {
         Ok(names) => {
             let available_challs_to_deploy : Vec<&str> = names.iter().map(AsRef::as_ref).collect();
             info!("Attempting to build all challenges...");
-            build_image(docker, available_challs_to_deploy).await?;
+            for chall in &available_challs_to_deploy {
+                info!("Building {:?}", chall);
+                build_image(docker, chall, None).await?;
+            }
             info!("Successfully built all images.");
             Ok("Successfully built all images.".to_string())
         },
@@ -247,7 +256,7 @@ pub async fn build_all_images(docker : &Docker) -> Result<String, String> {
 /// ## Returns
 /// - `Ok(())` - Image successfully pushed
 /// - `Err(String)` - Error occurred while pushing
-pub async fn push_image(docker: &Docker, name: &str) -> Result<(), String> {
+pub async fn push_image(docker: &Docker, name: &str, inner_path: Option<&Path>) -> Result<(), String> {
     let registry_username = reg_username();
     let registry_password = reg_password();
     let registry_url = reg_url();
@@ -259,9 +268,15 @@ pub async fn push_image(docker: &Docker, name: &str) -> Result<(), String> {
         .build();
 
     let mut complete_url = PathBuf::from(registry_url);
+    
     complete_url.push(name);
-
-    info!("Pushing image: {}...", name);
+    
+    if let Some(path) = inner_path {
+        complete_url.push(path);
+        info!("Pushing image with inner_path: {}/{}", name, path.to_string_lossy());
+    } else {
+        info!("Pushing image: {}...", name);
+    }
     
     // Push does not impl stream so have to deal with less data for pushing containers
     // TODO -- write own function using docker API to push containers
@@ -287,7 +302,7 @@ pub async fn push_image(docker: &Docker, name: &str) -> Result<(), String> {
 /// ## Returns
 /// - `Ok(())` - Image successfully pulled
 /// - `Err(String)` - Error occurred while pulling
-pub async fn pull_image(docker: &Docker, name: &str) -> Result<(), String>{
+pub async fn pull_image(docker: &Docker, name: &str, inner_path: Option<&Path>) -> Result<(), String>{
     let registry_username = reg_username();
     let registry_password = reg_password();
     let registry_url = reg_url();
@@ -301,7 +316,12 @@ pub async fn pull_image(docker: &Docker, name: &str) -> Result<(), String>{
     let mut complete_url = PathBuf::from(registry_url);
     complete_url.push(name);
 
-    info!("Attempting to pull image: {}", name);
+    if let Some(path) = inner_path {
+        complete_url.push(path);
+        info!("Attempting to pull image with inner_path: {}/{}", name, path.to_string_lossy());
+    } else {
+        info!("Attempting to pull image: {}", name);
+    }
 
     let mut stream = docker.images().pull(&PullOptions::builder().auth(auth).image(complete_url.to_string_lossy()).build());
     while let Some(data) = stream.next().await {
@@ -343,13 +363,17 @@ pub async fn pull_image(docker: &Docker, name: &str) -> Result<(), String>{
 /// ## Returns
 /// - `Ok(())` - Image successfully deleted
 /// - `Err(String)` - Error occurred while deleting
-pub async fn delete_image(docker: &Docker, name: &str) -> Result<(), String> {
+pub async fn delete_image(docker: &Docker, name: &str, inner_path: Option<&Path>) -> Result<(), String> {
     info!("Deleting image: {}", name);
 
     let registry_url = reg_url();
     let mut full_challenge_name = PathBuf::from(registry_url);
     full_challenge_name.push(name);
 
+    if let Some(path) = inner_path {
+        full_challenge_name.push(path);
+    }
+    
     match docker.images().get(full_challenge_name.to_string_lossy()).inspect().await {
         Ok(_) => {info!("Image '{}' found", full_challenge_name.to_string_lossy())},
         Err(e) => {

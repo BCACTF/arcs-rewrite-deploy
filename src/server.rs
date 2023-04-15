@@ -97,7 +97,7 @@ async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
                 Err(resp) => return resp.wrap(),
             };
             
-            delete_challenge(docker, k8s, meta).await.wrap()
+            delete_challenge(&docker, &k8s, meta).await.wrap()
         },
         "POLL" => {
             match poll_deployment(info.deploy_identifier) {

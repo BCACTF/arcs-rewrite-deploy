@@ -1,3 +1,4 @@
+use arcs_yaml_parser::deploy::structs::{DeployTargetType, DeployLink};
 use arcs_yaml_parser::files::structs::ContainerType;
 use arcs_yaml_parser::{File, YamlShape};
 use reqwest::Client;
@@ -57,7 +58,7 @@ pub async fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<
 
 // TODO - validate return types of this function
 // TODO - Actually make the SQL, Main, Discord branches send out the correct information
-pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<i32>>) -> Result<(), String> {
+pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployTargetType, Vec<i32>)>>) -> Result<(), String> {
     let poll_id = meta.poll_id();
     let emitter = Client::new();
     let mut discord_message_content: String;
@@ -83,10 +84,38 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<i32>>) -
         }
     };
 
-    let mut complete_links = static_files.clone();
+    let mut complete_links : Vec<DeployLink> = static_files
+        .iter()
+        .map(|static_link| {
+            DeployLink {
+                deploy_target: DeployTargetType::Static,
+                link: static_link.to_string(),
+            }}).collect();
+
     if let Some(ports) = ports.as_ref() {
-        for port in ports {
-            complete_links.push(format!("{}:{}", deploy_address(), port))
+        for targettype_ports in ports {
+            if targettype_ports.0 == DeployTargetType::Nc {
+                if let Some((_, ip)) = deploy_address().split_once("://") {
+                    for port in targettype_ports.1.iter() {
+                        complete_links.push(
+                            DeployLink {
+                                deploy_target: targettype_ports.0,
+                                link: format!("{} {}", ip, port),
+                            }
+                        );
+                    }
+                };
+            } else {
+                for port in targettype_ports.1.iter() {
+                    let sanitized_address = deploy_address().trim_matches('/');
+                    complete_links.push(
+                        DeployLink {
+                            deploy_target: targettype_ports.0,
+                            link: format!("{}:{}", sanitized_address, port),
+                        }
+                    );
+                }
+            }
         }
     }
 
@@ -100,12 +129,20 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<i32>>) -
         // TODO --> Maybe make this a bit nicer, isn't really the best way of doing this *probably*
         // Also, for netcat servers, the server this sends out is in the form of an http link which is... not correct.
         for link_to_file in &complete_links {
-            if link_to_file.starts_with(s3_display_address()) {
-                discord_message_content.push_str(format!("\nFile at: {}", link_to_file).as_str()); 
-            } else if link_to_file.starts_with(deploy_address()){
-                discord_message_content.push_str(format!("\nServer at: {}", link_to_file).as_str()); 
-            } else {
-                discord_message_content.push_str(format!("\nChallenge resource at: {}", link_to_file).as_str()); 
+            let link_to_file_link = &link_to_file.link;
+            match link_to_file.deploy_target {
+                DeployTargetType::Nc => {
+                    discord_message_content.push_str(format!("\nNetcat server at: {}", link_to_file_link).as_str()); 
+                }
+                DeployTargetType::Web => {
+                    discord_message_content.push_str(format!("\nWeb server at: {}", link_to_file_link).as_str()); 
+                }
+                DeployTargetType::Admin => {
+                    discord_message_content.push_str(format!("\nAdmin bot server at: {}", link_to_file_link).as_str()); 
+                }
+                DeployTargetType::Static => {
+                    discord_message_content.push_str(format!("\nStatic file at: {}", link_to_file_link).as_str()); 
+                }
             }
         }
     }
@@ -120,7 +157,6 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<i32>>) -
                 },
                 "frontend": {
                     "PollID": poll_id,
-                    "Ports": ports
                 },
                 "sql": {
                     "section": "challenge",

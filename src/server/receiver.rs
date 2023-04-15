@@ -1,6 +1,9 @@
+use std::path::{Path, PathBuf};
+
 use arcs_deploy_docker::{ build_image, delete_image as delete_docker_image, push_image, pull_image };
 use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge, get_chall_folder};
 
+use arcs_yaml_parser::deploy::structs::{DeployTarget, DeployTargetType};
 use arcs_yaml_parser::{File, YamlVerifyError};
 use kube::Client;
 use shiplift::Docker;
@@ -85,37 +88,39 @@ impl From<(DeployProcessErr, Metadata)> for Response {
 // initial deployments to k8s clusters & general instance management
 // (this may be done through ansible but setting up cluster as well)
 
-pub async fn build_challenge(docker: Docker, name: &String, polling_id: PollingId) -> Result<(), DeployProcessErr> {
+pub async fn build_challenge(docker: &Docker, name: &String, inner_path: Option<&Path>, polling_id: PollingId) -> Result<(), DeployProcessErr> {
     info!("Starting build; name: {name} poll_id: {polling_id}");
-    build_image(&docker, vec![name.as_str()]).await.map_err(DeployProcessErr::Build)
+    build_image(&docker, name.as_str(), inner_path).await.map_err(DeployProcessErr::Build)
 }
 
-pub async fn push_challenge(docker: Docker, name: &String, polling_id: PollingId) -> Result<(), DeployProcessErr> {
+pub async fn push_challenge(docker: &Docker, name: &String, inner_path: Option<&Path>, polling_id: PollingId) -> Result<(), DeployProcessErr> {
     info!("Starting push; name: {name} poll_id: {polling_id}");
-    push_image(&docker, name).await.map_err(DeployProcessErr::Push)
+    push_image(&docker, name, inner_path).await.map_err(DeployProcessErr::Push)
 }
 
-pub async fn pull_challenge(docker: Docker, name: &String, polling_id: PollingId) -> Result<(), DeployProcessErr> {
+pub async fn pull_challenge(docker: &Docker, name: &String, inner_path: Option<&Path>, polling_id: PollingId) -> Result<(), DeployProcessErr> {
     info!("Starting pull; name: {name} poll_id: {polling_id}");
-    pull_image(&docker, name).await.map_err(DeployProcessErr::Pull)
+    pull_image(&docker, name, inner_path).await.map_err(DeployProcessErr::Pull)
 }
 
 // may want to move the other two functions into this one and just call this when user asks for deploy/redeploy
 // response message is port challenge is running on (or if it's not running, No Port Returned)
 
 pub async fn deploy_challenge(
-    docker: Docker,
-    k8s: Client,
+    docker: &Docker,
+    k8s: &Client,
     name: &String,
     chall_folder_path: Option<&str>,
+    inner_path: Option<&Path>,
     polling_id: PollingId,
 ) -> Result<Vec<i32>, DeployProcessErr> {
     info!("Deploying {} to Kubernetes cluster...", name);
 
     let chall_folder = get_chall_folder(chall_folder_path);
 
-    pull_challenge(docker, name, polling_id).await?;
+    pull_challenge(&docker, name, inner_path, polling_id).await?;
     
+    // FIXME --> Update k8s to use the inner_paths as well
     match create_full_k8s_deployment(&k8s, vec![name], Some(&chall_folder)).await {
         Ok(ports) => {
             if ports.is_empty() { 
@@ -137,7 +142,7 @@ pub async fn deploy_challenge(
 }
 
 // FIXME: Deprecation bad.
-pub async fn delete_challenge(docker: Docker, client: Client, meta: Metadata) -> Response {
+pub async fn delete_challenge(docker: &Docker, client: &Client, meta: Metadata) -> Response {
     let name = meta.chall_name();
     
     warn!("Deleting {}...", name);
@@ -157,8 +162,9 @@ pub async fn delete_challenge(docker: Docker, client: Client, meta: Metadata) ->
     // TODO --> add delete docker container so things delete properly
 
     // TODO: Use the variables! (better logs please)
+    // FIXME: make this use an actual inner_path
     #[allow(unused_variables)]
-    match delete_docker_image(&docker, name).await {
+    match delete_docker_image(&docker, name, None).await {
         Ok(v) => {
             info!("Successfully deleted {} from Docker", name);
             "Success deleting Docker image".to_string()
@@ -236,7 +242,9 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
         };
 
         
-        if chall_yaml.deploy().is_none() {
+        let deploy_options = if let Some(options) = chall_yaml.deploy() {
+            options
+        } else {
             if let Err(failed_files) = deploy_static_files(&docker, meta.chall_name().as_str()).await {
                 error!("Failed to deploy static files {:?} for {} ({})", failed_files, meta.chall_name(), polling_id);
                 if fail_deployment(polling_id, (DeployProcessErr::FileUpload(failed_files), meta.clone()).into()).is_err() {
@@ -258,59 +266,81 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
             };
 
             return;
-        }
-
-        // DOCKER CHALLENGES BUILD STARTING FROM HERE, STATIC CHALLS ALREADY RETURNED
-        if let Err(build_err) = build_challenge(docker.clone(), &name, polling_id).await {
-            error!("Failed to build `{name}` ({polling_id}) with err {build_err:?}");
-            if fail_deployment(polling_id, (build_err, meta.clone()).into()).is_err() {
-                error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
-            }
-            send_failure_message(&meta, "Build").await;
-            return;
-        }
-        if !advance_with_fail_log(polling_id) { return; }
-        
-    
-        if let Err(push_err) = push_challenge(docker.clone(), &name, polling_id).await {
-            error!("Failed to push `{name}` ({polling_id}) with err {push_err:?}");
-            if fail_deployment(polling_id, (push_err, meta.clone()).into()).is_err() {
-                error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
-            }
-            send_failure_message(&meta, "Push").await;
-            return;
-        }
-        if !advance_with_fail_log(polling_id) { return; }
-
-       let ports = match deploy_challenge(docker.clone(), client.clone(), &name, None, polling_id).await {
-            Ok(ports) => {
-                info!("Successfully deployed `{name}` ({polling_id}) to port(s): {:?}", &ports);
-                if succeed_deployment(polling_id, &ports).is_err() {
-                    error!("`succeed_deployment` failed to mark polling id {polling_id} as succeeded");
-                }
-                ports
-            },
-            Err(deploy_err) => {
-                error!("Failed to deploy `{name}` ({polling_id}) with err {deploy_err:?}");
-                if fail_deployment(polling_id, (deploy_err, meta.clone()).into()).is_err() {
-                    error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
-                }
-                send_failure_message(&meta, "Deploy").await;
-                return;
-            }
         };
 
-        if let Err(failed_files) = deploy_static_files(&docker, meta.chall_name().as_str()).await {
-            error!("Failed to deploy static files {:?} for {} ({})", failed_files, meta.chall_name(), polling_id);
-            if fail_deployment(polling_id, (DeployProcessErr::FileUpload(failed_files), meta.clone()).into()).is_err() {
-                error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+        // DOCKER CHALLENGES BUILD STARTING FROM HERE, STATIC CHALLS ALREADY RETURNED
+        // to build multiple things iterate over chall.yaml with deploy fields and then you can take the path they say to build and build that path, return the links as a tuple with the type of server built and then from tehre that makes it easier to display and you dont need to rework everything
+
+        let collected = deploy_options.clone()
+            .into_iter()
+            .collect::<Vec<(DeployTarget, DeployTargetType)>>();
+
+        let mut deployed_servers : Vec<(DeployTargetType, Vec<i32>)> = Vec::new();
+
+        for deploy_target in collected {
+            // if built_path defaulted or set to ".", subfolder is None
+            let build_path_buf = if deploy_target.0.build.to_string_lossy() == "." {
+                None
+            } else {
+                Some(deploy_target.0.build.clone())
+            };
+
+            let build_path = build_path_buf.as_ref().map(PathBuf::as_path); 
+
+            if let Err(build_err) = build_challenge(&docker, &name, build_path, polling_id).await {
+                error!("Failed to build `{name}` ({polling_id}) with err {build_err:?}");
+                if fail_deployment(polling_id, (build_err, meta.clone()).into()).is_err() {
+                    error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+                }
+                send_failure_message(&meta, "Build").await;
+                return;
             }
-            send_failure_message(&meta, "Deploy Static Files").await;
-            return;
+            if !advance_with_fail_log(polling_id) { return; }
+            
+        
+            if let Err(push_err) = push_challenge(&docker, &name, build_path, polling_id).await {
+                error!("Failed to push `{name}` ({polling_id}) with err {push_err:?}");
+                if fail_deployment(polling_id, (push_err, meta.clone()).into()).is_err() {
+                    error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+                }
+                send_failure_message(&meta, "Push").await;
+                return;
+            }
+            if !advance_with_fail_log(polling_id) { return; }
+    
+            let ports = match deploy_challenge(&docker, &client, &name, None, build_path, polling_id).await {
+                Ok(ports) => {
+                    info!("Successfully deployed `{name}` ({polling_id}) to port(s): {:?}", &ports);
+                    if succeed_deployment(polling_id, &ports).is_err() {
+                        error!("`succeed_deployment` failed to mark polling id {polling_id} as succeeded");
+                    }
+                    ports
+                },
+                Err(deploy_err) => {
+                    error!("Failed to deploy `{name}` ({polling_id}) with err {deploy_err:?}");
+                    if fail_deployment(polling_id, (deploy_err, meta.clone()).into()).is_err() {
+                        error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+                    }
+                    send_failure_message(&meta, "Deploy").await;
+                    return;
+                }
+            };
+            
+            // FIXME --> This might break if there are two different deployed containers that have a weird container/image name --> fix will most likely include server type possibly??
+            if let Err(failed_files) = deploy_static_files(&docker, meta.chall_name().as_str()).await {
+                error!("Failed to deploy static files {:?} for {} ({})", failed_files, meta.chall_name(), polling_id);
+                if fail_deployment(polling_id, (DeployProcessErr::FileUpload(failed_files), meta.clone()).into()).is_err() {
+                    error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+                }
+                send_failure_message(&meta, "Deploy Static Files").await;
+                return;
+            }
+
+            deployed_servers.push((deploy_target.1, ports));
         }
 
         // TODO --> on a failed to parse file path or other yaml error here, send out a deploy failure message (or try to at least)
-        match send_deployment_success(&meta, Some(ports)).await {
+        match send_deployment_success(&meta, Some(deployed_servers)).await {
             Ok(_) => info!("Successfully sent deployment success message for {} ({})", meta.chall_name(), polling_id),
             Err(e) => error!("Failed to send deployment success message for {} ({}): {e:?}", meta.chall_name(), polling_id),
         };
