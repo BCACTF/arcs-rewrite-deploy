@@ -3,6 +3,7 @@ use arcs_yaml_parser::files::structs::ContainerType;
 use arcs_yaml_parser::{File, YamlShape};
 use reqwest::Client;
 use serde_json::json;
+use uuid::Uuid;
 
 use crate::logging::*;
 use crate::env::{webhook_address, deploy_token, s3_display_address, deploy_address};
@@ -23,6 +24,7 @@ pub async fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<
 
     // TODO --> improve error messages on these branches 
     for file in files {
+        info!("FILE: {:?}", file);
         if let Some(containertype) = file.container() {
             match containertype {
                 ContainerType::Nc => {
@@ -50,10 +52,25 @@ pub async fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<
                     }
                 }
             }
+        } else {
+            info!("ADDING REGULAR STATIC FILE");
+            if let Some(file_path) = file.path().to_str() {
+                let file_name = file_path.rsplit_once("/").map(|(_, name)| name).unwrap_or(file_path);
+                info!("FILE NAME: {:?}", file_name);
+                static_file_links.push(format!("{base}/{chall}/{file_name}"));
+            } else {
+                return Err("Failed to parse file path".to_string());
+            }
         }
     }
-
+    info!("STATIC FILE LINKS: {:?}", static_file_links);
     Ok(static_file_links)
+}
+
+
+pub fn get_db_id(json: serde_json::Value) -> Option<Uuid> {
+    let id_str = json.get("sql")?.get("output")?.get("id")?.as_str()?;
+    Uuid::parse_str(id_str).ok()
 }
 
 // TODO - validate return types of this function
@@ -75,6 +92,8 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
         error!("Failed to find chall.yaml for challenge: {}", meta.chall_name());
         return Err("Failed to find chall.yaml for challenge".to_string());
     };
+
+    println!("Have a yaml: {yaml_file:#?}");
 
     let static_files = match get_static_file_links(meta, &yaml_file).await {
         Ok(files) => files,
@@ -147,6 +166,8 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
         }
     }
 
+    info!("{:#?}", complete_links);
+
     let jsonbody = json!(
         {
             "_type": "DeploymentSuccess",
@@ -186,24 +207,61 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
         Ok(resp) => {
             if resp.status().is_success() {
                 info!("Successfully sent DeploymentSuccess message to webhook server");
-                // info!("Sending DeploymentSuccess message to Frontend server");
+                info!("Sending DeploymentSuccess message to Frontend server");
                 
-                // let database_id = resp.
+                let chall_id : Uuid = if let Some(chall_id) = resp.json().await.ok().map(|json| get_db_id(json)).flatten() {
+                    chall_id
+                } else { 
+                    // TODO --> add better handling of the error here
+                    error!("FAILED"); 
+                    return Err("Failed to get database id from webhook server".to_string());
+                };
+                
 
-                // let frontend_body = json!(
-                //     {
-                //         "__type": "SyncSuccessDeploy",
-                //         "targets": {
-                //             "frontend": {
-                //                 "poll_id": poll_id,
-                //                 "database_id": database_id,
-                //             },
-                //         }
-                //     }
-                // );
+                let frontend_body = json!(
+                    {
+                        "_type": "SyncSuccessDeploy",
+                        "targets": {
+                            "frontend": {
+                                "chall_id": chall_id,
+                                "poll_id": poll_id,
+                            },
+                        }
+                    }
+                );
 
+                info!("made json body");
 
-                Ok(())
+                let frontend_response = emitter.post(webhook_address())
+                    .bearer_auth(deploy_token())
+                    .json(&frontend_body)
+                    .send()
+                    .await;
+
+                info!("sent out request to frontend");
+
+                match frontend_response {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            info!("Successfully sent SyncSuccessDeploy message to Frontend server");
+                            Ok(())
+                        } else {
+                            error!("Error sending SyncSuccessDeploy message to Frontend server : Bad status code returned");
+                            error!("Trace: {:#?}", response);
+
+                            if response.status() == 401 {
+                                warn!("Frontend server returned 401 Unauthorized. Check that the DEPLOY_SERVER_AUTH_TOKEN is correct");
+                            }
+
+                            Err("Error sending SyncSuccessDeploy message to Frontend server".to_string())
+                        }
+                    },
+                    Err(err) => {
+                        error!("Error sending SyncSuccessDeploy message to Frontend server");
+                        error!("Trace: {:#?}", err);
+                        Err("Error sending SyncSuccessDeploy message to Frontend server".to_string())
+                    }
+                }
             } else {
                 error!("Error sending DeploymentSuccess message to webhook server : Bad status code returned");
                 error!("Trace: {:#?}", resp);
