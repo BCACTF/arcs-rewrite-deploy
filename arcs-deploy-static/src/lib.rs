@@ -28,6 +28,7 @@ pub fn fetch_chall_yaml(chall_folder_name: &str) -> Option<Result<YamlShape, Yam
     Some(YamlShape::try_from_str(&yaml_data, &Default::default(), Some(&folder_path)))
 }
 
+// TODO --> if it is not relative (if its a url), add new function flow
 pub async fn deploy_static_files(docker: &Docker, chall_name: &str) -> Result<Vec<File>, Vec<File>> {
     info!("Deploying static challenge: {}", chall_name);
     let client = Client::new();

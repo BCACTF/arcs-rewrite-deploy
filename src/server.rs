@@ -16,7 +16,7 @@ use crate::receiver::{ delete_challenge, spawn_deploy_req };
 use crate::logging::*;
 use crate::polling::{ PollingId, poll_deployment };
 
-
+use crate::env::{port, deploy_address};
 
 use actix_web_httpauth::middleware::HttpAuthentication;
 
@@ -112,14 +112,20 @@ async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
     }
 }
 
+// TODO - migrate bind to environment variables
 pub async fn initialize_server() -> std::io::Result<()> {
+    let server_ip = deploy_address().strip_prefix("http://").or(deploy_address().strip_prefix("https://")).unwrap();
+    let server_port : u16 = port().parse().unwrap();
+
+    info!("Deploy server listening on {}:{}", server_ip, server_port);
+
     HttpServer::new(|| {
         let auth = HttpAuthentication::bearer(validate_auth_token);
         App::new()
         .wrap(auth)
         .service(incoming_post)
     })
-    .bind(("127.0.0.1", 3000))?
+    .bind((server_ip, server_port))?
     .run()
     .await
 }

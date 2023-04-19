@@ -2,7 +2,6 @@ use lazy_static::lazy_static;
 use uuid::Uuid;
 use std::time::{ Instant, SystemTime, Duration };
 use chashmap::CHashMap;
-use std::fmt::Display;
 use serde::{ Serialize, Serializer };
 use crate::server::responses::{Response, Metadata};
 
@@ -152,33 +151,7 @@ impl Serialize for DeploymentStatus {
 /// ## Functions
 /// - `new`: Creates a new `PollingId` from the given `chall_id` and `race_lock_id`
 /// - `tup`: Returns a tuple of the `chall_id` and `race_lock_id`
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PollingId {
-    chall_id: Uuid,
-    race_lock_id: Uuid,
-}
-impl PollingId {
-    pub fn new(chall_id: Uuid, race_lock_id: Uuid) -> Self {
-        Self { chall_id, race_lock_id }
-    }
-    pub fn tup(&self) -> (Uuid, Uuid) {
-        (self.chall_id, self.race_lock_id)
-    }
-}
-impl Display for PollingId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Polling<{}.{}>", self.chall_id, self.race_lock_id)
-    }
-}
-impl Serialize for PollingId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
-}
-
+pub type PollingId = Uuid;
 
 lazy_static! {
     static ref CURRENT_DEPLOYMENTS: CHashMap<PollingId, DeploymentStatus> = CHashMap::new();
@@ -294,111 +267,5 @@ pub fn succeed_deployment(id: PollingId, response: &[i32]) -> Result<DeploymentS
         }
     } else {
         Err(id)
-    }
-}
-
-
-mod polling_id_deserialize {
-    use super::PollingId;
-    use serde::{ Deserialize, de::Visitor, Deserializer };
-    use serde::de::{ Error as DeErr, MapAccess as DeMapAccess, Unexpected as DeUnexpect };
-    use std::fmt;
-    use uuid::Uuid;
-
-
-    const FIELDS: &[&str] = &["chall_id", "deploy_race_lock_id"];
-
-    enum PollingIdField { Chall, Race }
-
-    impl<'de> Deserialize<'de> for PollingIdField {
-        fn deserialize<D>(deserializer: D) -> Result<PollingIdField, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            struct FieldVisitor;
-
-            impl<'de> Visitor<'de> for FieldVisitor {
-                type Value = PollingIdField;
-
-                fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                    formatter.write_str("`chall_id` or `deploy_race_lock_id`")
-                }
-
-                fn visit_str<E>(self, value: &str) -> Result<PollingIdField, E>
-                where
-                    E: DeErr,
-                {
-                    match value {
-                        "chall_id" => Ok(PollingIdField::Chall),
-                        "deploy_race_lock_id" => Ok(PollingIdField::Race),
-                        _ => Err(DeErr::unknown_field(value, FIELDS)),
-                    }
-                }
-            }
-
-            deserializer.deserialize_identifier(FieldVisitor)
-        }
-    }
-
-    struct PollingIdVisitor;
-    
-    impl<'de> Visitor<'de> for PollingIdVisitor {
-        type Value = PollingId;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("<uuid>.<uuid> OR { chall_id: <uuid>, deploy_race_lock_id: <uuid> }")
-        }
-
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: DeErr, {
-            if let Some((chall, race_lock)) = v.split_once('.') {
-                match (Uuid::parse_str(chall), Uuid::parse_str(race_lock)) {
-                    (Ok(chall), Ok(race)) => Ok(PollingId::new(chall, race)),
-                    (Err(_), Ok(_)) => Err(DeErr::invalid_value(DeUnexpect::Str(v), &"Valid uuid before the period.")),
-                    (Ok(_), Err(_)) => Err(DeErr::invalid_value(DeUnexpect::Str(v), &"Valid uuid after the period.")),
-                    (Err(_), Err(_)) => Err(DeErr::invalid_value(DeUnexpect::Str(v), &"<uuid>.<uuid>")),
-                }
-            } else {
-                Err(DeErr::invalid_value(DeUnexpect::Str(v), &"<uuid>.<uuid>"))
-            }
-        }
-
-        fn visit_map<V>(self, mut map: V) -> Result<PollingId, V::Error>
-        where
-            V: DeMapAccess<'de>,
-        {
-            let mut chall_id = None;
-            let mut race_lock = None;
-            while let Some(key) = map.next_key()? {
-                match key {
-                    PollingIdField::Chall => {
-                        if chall_id.is_some() {
-                            return Err(DeErr::duplicate_field(FIELDS[0]));
-                        }
-                        chall_id = Some(map.next_value()?);
-                    }
-                    PollingIdField::Race => {
-                        if race_lock.is_some() {
-                            return Err(DeErr::duplicate_field(FIELDS[1]));
-                        }
-                        race_lock = Some(map.next_value()?);
-                    }
-                }
-            }
-            let chall_id = chall_id.ok_or_else(|| DeErr::missing_field(FIELDS[0]))?;
-            let race_lock_id = race_lock.ok_or_else(|| DeErr::missing_field(FIELDS[1]))?;
-            Ok(PollingId::new(chall_id, race_lock_id))
-        }
-    }
-
-    impl<'de> Deserialize<'de> for PollingId {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            deserializer
-                .deserialize_any(PollingIdVisitor)
-        }
     }
 }

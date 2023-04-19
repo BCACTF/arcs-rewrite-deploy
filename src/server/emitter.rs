@@ -11,49 +11,49 @@ use crate::server::responses::Metadata;
 use arcs_deploy_static::fetch_chall_yaml;
 
 pub async fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<Vec<String>, String> {
-        let mut static_file_links : Vec<String> = Vec::new();
-        let files = yaml
-            .file_iter()
-            .into_iter()
-            .flatten()
-            .cloned()
-            .collect::<Vec<File>>();
-        let chall = meta.chall_name().trim_matches('/');
-        let base = s3_display_address().trim_matches('/');
+    let mut static_file_links : Vec<String> = Vec::new();
+    let files = yaml
+        .file_iter()
+        .into_iter()
+        .flatten()
+        .cloned()
+        .collect::<Vec<File>>();
+    let chall = meta.chall_name().trim_matches('/');
+    let base = s3_display_address().trim_matches('/');
 
-        // TODO --> improve error messages on these branches 
-        for file in files {
-            if let Some(containertype) = file.container() {
-                match containertype {
-                    ContainerType::Nc => {
-                        if let Some(file_path) = file.path().to_str() {
-                            if let Some((_, filename)) = file_path.rsplit_once("/") {
-                                static_file_links.push(format!("{base}/{chall}/{filename}"));
-                            } else {
-                                return Err("Failed to parse file path for file".to_string());
-                            }
+    // TODO --> improve error messages on these branches 
+    for file in files {
+        if let Some(containertype) = file.container() {
+            match containertype {
+                ContainerType::Nc => {
+                    if let Some(file_path) = file.path().to_str() {
+                        if let Some((_, filename)) = file_path.rsplit_once("/") {
+                            static_file_links.push(format!("{base}/{chall}/{filename}"));
                         } else {
-                            return Err("Failed to find file path for file".to_string());
+                            return Err("Failed to parse file path for file".to_string());
                         }
+                    } else {
+                        return Err("Failed to find file path for file".to_string());
                     }
-                    // If in the future there are other weird container files, add more branches here
-                    _ => {
-                        if let Some(file_path) = file.path().to_str() {
-                            info!("FILE PATH: {:?}", file_path.rsplit_once("/"));
-                            if let Some((_, name)) = file_path.rsplit_once("/") {
-                                static_file_links.push(format!("{base}/{chall}/{name}"));
-                            } else {
-                                return Err("Failed to parse file path for file".to_string());
-                            }
+                }
+                // If in the future there are other weird container files, add more branches here
+                _ => {
+                    if let Some(file_path) = file.path().to_str() {
+                        info!("FILE PATH: {:?}", file_path.rsplit_once("/"));
+                        if let Some((_, name)) = file_path.rsplit_once("/") {
+                            static_file_links.push(format!("{base}/{chall}/{name}"));
                         } else {
-                            return Err("Failed to parse file path".to_string());
+                            return Err("Failed to parse file path for file".to_string());
                         }
+                    } else {
+                        return Err("Failed to parse file path".to_string());
                     }
                 }
             }
         }
+    }
 
-        Ok(static_file_links)
+    Ok(static_file_links)
 }
 
 // TODO - validate return types of this function
@@ -155,9 +155,6 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
                     "content": discord_message_content,
                     "urgency": "low"
                 },
-                "frontend": {
-                    "PollID": poll_id,
-                },
                 "sql": {
                     "section": "challenge",
                     "query": {
@@ -188,6 +185,24 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
     match response {
         Ok(resp) => {
             if resp.status().is_success() {
+                info!("Successfully sent DeploymentSuccess message to webhook server");
+                // info!("Sending DeploymentSuccess message to Frontend server");
+                
+                // let database_id = resp.
+
+                // let frontend_body = json!(
+                //     {
+                //         "__type": "SyncSuccessDeploy",
+                //         "targets": {
+                //             "frontend": {
+                //                 "poll_id": poll_id,
+                //                 "database_id": database_id,
+                //             },
+                //         }
+                //     }
+                // );
+
+
                 Ok(())
             } else {
                 error!("Error sending DeploymentSuccess message to webhook server : Bad status code returned");
