@@ -69,7 +69,7 @@ pub async fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<
 
 
 pub fn get_db_id(json: serde_json::Value) -> Option<Uuid> {
-    let id_str = json.get("sql")?.get("output")?.get("id")?.as_str()?;
+    let id_str = json.get("sql")?.get("id")?.as_str()?;
     Uuid::parse_str(id_str).ok()
 }
 
