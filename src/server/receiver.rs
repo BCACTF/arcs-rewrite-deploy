@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use arcs_deploy_docker::{ build_image, delete_image as delete_docker_image, push_image, pull_image };
 use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge, get_chall_folder};
@@ -90,17 +90,17 @@ impl From<(DeployProcessErr, Metadata)> for Response {
 
 pub async fn build_challenge(docker: &Docker, name: &String, inner_path: Option<&Path>, polling_id: PollingId) -> Result<(), DeployProcessErr> {
     info!("Starting build; name: {name} poll_id: {polling_id}");
-    build_image(&docker, name.as_str(), inner_path).await.map_err(DeployProcessErr::Build)
+    build_image(docker, name.as_str(), inner_path).await.map_err(DeployProcessErr::Build)
 }
 
 pub async fn push_challenge(docker: &Docker, name: &String, inner_path: Option<&Path>, polling_id: PollingId) -> Result<(), DeployProcessErr> {
     info!("Starting push; name: {name} poll_id: {polling_id}");
-    push_image(&docker, name, inner_path).await.map_err(DeployProcessErr::Push)
+    push_image(docker, name, inner_path).await.map_err(DeployProcessErr::Push)
 }
 
 pub async fn pull_challenge(docker: &Docker, name: &String, inner_path: Option<&Path>, polling_id: PollingId) -> Result<(), DeployProcessErr> {
     info!("Starting pull; name: {name} poll_id: {polling_id}");
-    pull_image(&docker, name, inner_path).await.map_err(DeployProcessErr::Pull)
+    pull_image(docker, name, inner_path).await.map_err(DeployProcessErr::Pull)
 }
 
 // may want to move the other two functions into this one and just call this when user asks for deploy/redeploy
@@ -118,10 +118,10 @@ pub async fn deploy_challenge(
 
     let chall_folder = get_chall_folder(chall_folder_path);
 
-    pull_challenge(&docker, name, inner_path, polling_id).await?;
+    pull_challenge(docker, name, inner_path, polling_id).await?;
     
     // FIXME --> Update k8s to use the inner_paths as well
-    match create_full_k8s_deployment(&k8s, vec![name], Some(&chall_folder)).await {
+    match create_full_k8s_deployment(k8s, vec![name], Some(&chall_folder)).await {
         Ok(ports) => {
             if ports.is_empty() { 
                 error!("Error deploying {} ({polling_id}) to k8s cluster", name);
@@ -148,7 +148,7 @@ pub async fn delete_challenge(docker: &Docker, client: &Client, meta: Metadata) 
     warn!("Deleting {}...", name);
 
     // TODO: Use the variables! (better logs please)
-    match delete_k8s_challenge(&client, vec![name.as_str()]).await {
+    match delete_k8s_challenge(client, vec![name.as_str()]).await {
         Ok(_) => {
             info!("Successfully deleted {} from Kubernetes cluster", name);
             "Success deleting Kubernetes deployment/service".to_string()
@@ -164,7 +164,7 @@ pub async fn delete_challenge(docker: &Docker, client: &Client, meta: Metadata) 
     // TODO: Use the variables! (better logs please)
     // FIXME: make this use an actual inner_path
     #[allow(unused_variables)]
-    match delete_docker_image(&docker, name, None).await {
+    match delete_docker_image(docker, name, None).await {
         Ok(v) => {
             info!("Successfully deleted {} from Docker", name);
             "Success deleting Docker image".to_string()
@@ -285,7 +285,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
                 Some(deploy_target.0.build.clone())
             };
 
-            let build_path = build_path_buf.as_ref().map(PathBuf::as_path); 
+            let build_path = build_path_buf.as_deref(); 
 
             if let Err(build_err) = build_challenge(&docker, &name, build_path, polling_id).await {
                 error!("Failed to build `{name}` ({polling_id}) with err {build_err:?}");

@@ -4,7 +4,7 @@ use k8s_openapi::api::{core::v1::{Pod, Service, Secret},
                   apps::v1::Deployment};
 use kube::{Client, Api, Error, 
            core::ObjectList,
-           api::{ListParams, PostParams, DeleteParams}};
+           api::{ListParams, PostParams, DeleteParams}, Config as ClientConfig};
 use kube_runtime::{watcher::Config, WatchStreamExt};
 use std::{fs::File, io::Read, path::PathBuf, collections::HashMap};
 pub mod network_protocol;
@@ -92,7 +92,22 @@ fn fetch_challenge_params(name: &str, chall_folder_path: Option<&str>) -> Result
 /// - `Ok(Client)` - Kubernetes client
 /// - `Err(String)` - Error trace if error occurs
 pub async fn create_client() -> Result<Client, String> {
-    match Client::try_default().await {
+    let config = ClientConfig::from_kubeconfig(&kube::config::KubeConfigOptions {
+        context: Some("deploy-test".to_string()),
+        cluster: Some("deployed".to_string()),
+        user: Some("skytest".to_string()),
+    }).await;
+
+    let config = match config {
+        Ok(config) => Ok(config),
+        Err(e) => {
+            error!("Error reading kubernetes config");
+            debug!("Trace: {e:?}");
+            Err(e.to_string())
+        },
+    }?;
+    
+    match Client::try_from(config) {
         Ok(client) => {
             info!("Successfully connected to Kubernetes");
             match generate_registry_secret(&client).await {
@@ -103,7 +118,7 @@ pub async fn create_client() -> Result<Client, String> {
                 Err(err) => {
                     error!("Error creating registry secret");
                     warn!("Ensure Kubernetes cluster is running");
-                    debug!("Trace: {:?}", err);
+                    debug!("Trace: {err:?}");
                     Err(err)
                 }
             }

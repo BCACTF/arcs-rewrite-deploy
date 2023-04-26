@@ -1,4 +1,4 @@
-use arcs_yaml_parser::deploy::structs::{DeployTargetType, DeployLink};
+use arcs_yaml_parser::deploy::structs::{DeployLink, DeployTargetType};
 use arcs_yaml_parser::files::structs::ContainerType;
 use arcs_yaml_parser::{File, YamlShape};
 use reqwest::Client;
@@ -29,7 +29,7 @@ pub async fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<
             match containertype {
                 ContainerType::Nc => {
                     if let Some(file_path) = file.path().to_str() {
-                        if let Some((_, filename)) = file_path.rsplit_once("/") {
+                        if let Some((_, filename)) = file_path.rsplit_once('/') {
                             static_file_links.push(format!("{base}/{chall}/{filename}"));
                         } else {
                             return Err("Failed to parse file path for file".to_string());
@@ -41,8 +41,8 @@ pub async fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<
                 // If in the future there are other weird container files, add more branches here
                 _ => {
                     if let Some(file_path) = file.path().to_str() {
-                        info!("FILE PATH: {:?}", file_path.rsplit_once("/"));
-                        if let Some((_, name)) = file_path.rsplit_once("/") {
+                        info!("FILE PATH: {:?}", file_path.rsplit_once('/'));
+                        if let Some((_, name)) = file_path.rsplit_once('/') {
                             static_file_links.push(format!("{base}/{chall}/{name}"));
                         } else {
                             return Err("Failed to parse file path for file".to_string());
@@ -55,7 +55,7 @@ pub async fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<
         } else {
             info!("ADDING REGULAR STATIC FILE");
             if let Some(file_path) = file.path().to_str() {
-                let file_name = file_path.rsplit_once("/").map(|(_, name)| name).unwrap_or(file_path);
+                let file_name = file_path.rsplit_once('/').map(|(_, name)| name).unwrap_or(file_path);
                 info!("FILE NAME: {:?}", file_name);
                 static_file_links.push(format!("{base}/{chall}/{file_name}"));
             } else {
@@ -185,7 +185,7 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
                         "points": &yaml_file.points(),
                         "authors": &yaml_file.authors(),
                         "hints": &yaml_file.hints(),
-                        "categories": &yaml_file.category_str_iter().into_iter().collect::<Vec<&str>>(),
+                        "categories": &yaml_file.category_str_iter().collect::<Vec<&str>>(),
                         "tags": [], // TODO --> add tags in YamlShape
                         "links": complete_links,
                         "source_folder": meta.chall_name(), // TODO --> Add correct source_folder name, right now assumes chall_name
@@ -209,7 +209,7 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
                 info!("Successfully sent DeploymentSuccess message to webhook server");
                 info!("Sending DeploymentSuccess message to Frontend server");
                 
-                let chall_id : Uuid = if let Some(chall_id) = resp.json().await.ok().map(|json| get_db_id(json)).flatten() {
+                let chall_id : Uuid = if let Some(chall_id) = resp.json().await.ok().and_then(get_db_id) {
                     chall_id
                 } else { 
                     // TODO --> add better handling of the error here
