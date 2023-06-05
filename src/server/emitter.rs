@@ -297,7 +297,8 @@ pub async fn send_deployment_failure(meta: &Metadata, err: String) -> Result<(),
                     "urgency": "medium"
                 },
                 "frontend": {
-                    "PollID": poll_id,
+                    "poll_id": poll_id,
+                    "chall_id": uuid::Uuid::nil(),
                     "message": format!("Failed to deploy {}. Check logs for info.", meta.chall_name()),
                     "trace": err
                 }
