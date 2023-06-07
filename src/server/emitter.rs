@@ -180,7 +180,7 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
                     "section": "challenge",
                     "query": {
                         "__tag": "create",
-                        "name": meta.chall_name(),
+                        "name": &yaml_file.chall_name(),
                         "description": &yaml_file.description(),
                         "points": &yaml_file.points(),
                         "authors": &yaml_file.authors(),
@@ -297,7 +297,8 @@ pub async fn send_deployment_failure(meta: &Metadata, err: String) -> Result<(),
                     "urgency": "medium"
                 },
                 "frontend": {
-                    "PollID": poll_id,
+                    "poll_id": poll_id,
+                    "chall_id": uuid::Uuid::nil(),
                     "message": format!("Failed to deploy {}. Check logs for info.", meta.chall_name()),
                     "trace": err
                 }
