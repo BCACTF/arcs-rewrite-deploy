@@ -116,6 +116,8 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
             if targettype_ports.0 == DeployTargetType::Nc {
                 if let Some((_, ip)) = deploy_address().split_once("://") {
                     for port in targettype_ports.1.iter() {
+                        let ip = "challs.bcactf.com"; // TODO --> remove this after event
+
                         complete_links.push(
                             DeployLink {
                                 deploy_target: targettype_ports.0,
@@ -126,7 +128,9 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
                 };
             } else {
                 for port in targettype_ports.1.iter() {
-                    let sanitized_address = deploy_address().trim_matches('/');
+                    // let sanitized_address = deploy_address().trim_matches('/'); // this is a hack, don't be like me
+                    let sanitized_address = "challs.bcactf.com";
+
                     complete_links.push(
                         DeployLink {
                             deploy_target: targettype_ports.0,

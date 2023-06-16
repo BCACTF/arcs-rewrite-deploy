@@ -399,6 +399,22 @@ pub async fn delete_image(docker: &Docker, name: &str, inner_path: Option<&Path>
 // TODO --> make this nicer, feels really hacky atm
 pub async fn fetch_container_file(docker: &Docker, container_name: &str, file_path: &Path) -> Result<Vec<u8>, String> {
     let reg_url = reg_url();
+    
+    warn!("IMAGE REQUESTING FILE INSIDE CONTAINER RUNNING...");
+    let image_name = format!("{}/{}", reg_url, container_name);
+
+    use shiplift::container::ContainerOptions;
+    let opts = ContainerOptions::builder(&image_name).build();
+
+    let containers = docker.containers();
+
+    if let Ok(create_result) = containers.create(&opts).await {
+        info!("Successfully started docker container for image {}", image_name);
+        containers.get(create_result.id);
+    } else {
+        warn!("Could not create the docker container in the current system. Image name: {}", image_name);
+        return Err(format!("Could not create the docker container in the current system."));
+    };
 
     let container_info = if let Some(container) = retrieve_containers(docker).await?
         .into_iter()
