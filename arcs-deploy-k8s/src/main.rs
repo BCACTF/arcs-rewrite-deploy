@@ -1,4 +1,4 @@
-use arcs_deploy_logging::{set_up_logging, DEFAULT_LOGGGING_TARGETS};
+use arcs_logging_rs::{set_up_logging, DEFAULT_LOGGGING_TARGETS};
 
 use arcs_deploy_k8s::logging;
 // make sure to update k8s version used in Cargo.toml

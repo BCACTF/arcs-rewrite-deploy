@@ -3,7 +3,7 @@ use arcs_deploy_k8s::check_env_vars as check_k8s_env_vars;
 use arcs_deploy_main::env::check_env_vars;
 use arcs_deploy_main::start_server;
 
-use arcs_deploy_logging::{set_up_logging, DEFAULT_LOGGGING_TARGETS};
+use arcs_logging_rs::{set_up_logging, DEFAULT_LOGGGING_TARGETS};
 use arcs_deploy_main::logging;
 
 use std::io::Result as IOResult;

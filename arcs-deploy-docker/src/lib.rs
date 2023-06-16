@@ -2,7 +2,7 @@ use env::chall_folder_default;
 use futures::TryStreamExt;
 use shiplift::container::ContainerInfo;
 use shiplift::image::ImageBuildChunk;
-use std::{borrow::Borrow, path::Path};
+use std::path::Path;
 use std::fs::read_dir;
 
 use shiplift::{Docker, image::{PushOptions, PullOptions, BuildOptions, ImageInfo}};
@@ -16,7 +16,7 @@ pub use env::check_env_vars;
 use futures::stream::StreamExt;
 #[allow(unused_macros)]
 pub mod logging {
-    use arcs_deploy_logging::with_target;
+    use arcs_logging_rs::with_target;
     with_target! { "arcs-deploy" }
 }
 
@@ -119,7 +119,7 @@ pub async fn build_image(docker: &Docker, chall_folder_name : &str, inner_path: 
     while let Some(build_result) = stream.next().await {
         match build_result {
             Ok(output) => {
-                match output.borrow() {
+                match &output {
                     ImageBuildChunk::Update {stream} => {
                         trace!("{:?}", stream);
                     },
@@ -327,7 +327,7 @@ pub async fn pull_image(docker: &Docker, name: &str, inner_path: Option<&Path>) 
     while let Some(data) = stream.next().await {
         match data {
             Ok(output) => {
-                match output.borrow() {
+                match &output {
                     ImageBuildChunk::Update {stream} => {
                         trace!("{:?}", stream);
                     },

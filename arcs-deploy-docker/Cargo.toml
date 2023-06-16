@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 # ARCS dependencies
-arcs-deploy-logging = { version = "0.1.0", path = "../arcs-deploy-logging" }
+arcs-logging-rs = "0.1.2"
 arcs-deploy-env = { version = "0.1.0", path = "../arcs-deploy-env" }
 
 # Docker-related

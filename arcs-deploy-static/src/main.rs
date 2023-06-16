@@ -1,4 +1,4 @@
-use arcs_deploy_logging::{set_up_logging, DEFAULT_LOGGGING_TARGETS};
+use arcs_logging_rs::{set_up_logging, DEFAULT_LOGGGING_TARGETS};
 use arcs_deploy_static::logging;
 
 use dotenv::dotenv;
