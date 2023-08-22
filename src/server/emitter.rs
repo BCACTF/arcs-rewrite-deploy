@@ -175,6 +175,7 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
         "__type": "chall",
         "query_name": "create",
 
+        "id": meta.poll_id(),
         "name": &yaml_file.chall_name(),
         "description": &yaml_file.description(),
         "points": &yaml_file.points(),
@@ -216,17 +217,13 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
                 };
                 
 
-                let frontend_body = json!(
-                    {
-                        "_type": "SyncSuccessDeploy",
-                        "targets": {
-                            "frontend": {
-                                "chall_id": chall_id,
-                                "poll_id": poll_id,
-                            },
-                        }
-                    }
-                );
+                let frontend_body = json!({
+                    "frontend": {
+                        "__type": "sync",
+                        "__sync_type": "chall",
+                        "id": chall_id,
+                    },
+                });
 
                 info!("made json body");
 
