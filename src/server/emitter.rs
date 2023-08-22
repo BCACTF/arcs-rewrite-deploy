@@ -1,15 +1,18 @@
-use arcs_yaml_parser::deploy::structs::{DeployLink, DeployTargetType};
-use arcs_yaml_parser::files::structs::ContainerType;
-use arcs_yaml_parser::{File, YamlShape};
 use reqwest::Client;
 use serde_json::json;
 use uuid::Uuid;
+use std::fmt::Write;
+
+use arcs_yaml_parser::deploy::structs::{DeployLink, DeployTargetType};
+use arcs_yaml_parser::files::structs::ContainerType;
+use arcs_yaml_parser::{File, YamlShape};
+
+use arcs_deploy_static::fetch_chall_yaml;
 
 use crate::logging::*;
 use crate::env::{webhook_address, deploy_token, s3_display_address, deploy_address};
 use crate::server::responses::Metadata;
 
-use arcs_deploy_static::fetch_chall_yaml;
 
 pub async fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<Vec<String>, String> {
     let mut static_file_links : Vec<String> = Vec::new();
@@ -78,7 +81,6 @@ pub fn get_db_id(json: serde_json::Value) -> Option<Uuid> {
 pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployTargetType, Vec<i32>)>>) -> Result<(), String> {
     let poll_id = meta.poll_id();
     let emitter = Client::new();
-    let mut discord_message_content: String;
     
     let yaml_file = if let Some(yaml_file) = fetch_chall_yaml(meta.chall_name()) {
         match yaml_file {
@@ -138,64 +140,56 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
         }
     }
 
+    let mut disc_message = String::with_capacity(240);
+
     if let Some(ports) = ports.as_ref() {
-        discord_message_content = format!("Successfully deployed **{}** on port {:?}", meta.chall_name(), ports);
+        write!(disc_message, "Successfully deployed **{}** on port(s) {ports:?}", meta.chall_name())
     } else {
-        discord_message_content = format!("Successfully deployed **{}**. No ports provided", meta.chall_name());
-    }
+        write!(disc_message, "Successfully deployed **{}**. No ports provided", meta.chall_name())
+    }.map_err(|e| e.to_string())?;
 
     if !complete_links.is_empty() {
         // TODO --> Maybe make this a bit nicer, isn't really the best way of doing this *probably*
         // Also, for netcat servers, the server this sends out is in the form of an http link which is... not correct.
         for link_to_file in &complete_links {
             let link_to_file_link = &link_to_file.link;
-            match link_to_file.deploy_target {
-                DeployTargetType::Nc => {
-                    discord_message_content.push_str(format!("\nNetcat server at: {}", link_to_file_link).as_str()); 
-                }
-                DeployTargetType::Web => {
-                    discord_message_content.push_str(format!("\nWeb server at: {}", link_to_file_link).as_str()); 
-                }
-                DeployTargetType::Admin => {
-                    discord_message_content.push_str(format!("\nAdmin bot server at: {}", link_to_file_link).as_str()); 
-                }
-                DeployTargetType::Static => {
-                    discord_message_content.push_str(format!("\nStatic file at: {}", link_to_file_link).as_str()); 
-                }
-            }
+
+            let server_type = link_to_file.deploy_target.resource_type();
+            write!(disc_message, "{server_type} at: {link_to_file_link}").map_err(|e| e.to_string())?;
         }
     }
 
     info!("{:#?}", complete_links);
+    let developer_discord_payload = json!({
+        "__type": "developer",
+        "level": "INFO",
+        "message": disc_message,
+        "data": {},
+        "include_chall_writers": false,
+    });
+    let sql_payload = json!({
+        "__type": "chall",
+        "query_name": "create",
 
-    let jsonbody = json!(
-        {
-            "_type": "DeploymentSuccess",
-            "targets": {
-                "discord": {
-                    "content": discord_message_content,
-                    "urgency": "low"
-                },
-                "sql": {
-                    "section": "challenge",
-                    "query": {
-                        "__tag": "create",
-                        "name": &yaml_file.chall_name(),
-                        "description": &yaml_file.description(),
-                        "points": &yaml_file.points(),
-                        "authors": &yaml_file.authors(),
-                        "hints": &yaml_file.hints(),
-                        "categories": &yaml_file.category_str_iter().collect::<Vec<&str>>(),
-                        "tags": [], // TODO --> add tags in YamlShape
-                        "links": complete_links,
-                        "source_folder": meta.chall_name(), // TODO --> Add correct source_folder name, right now assumes chall_name
-                        "visible": &yaml_file.visible(),
-                        "flag": &yaml_file.flag_str()
-                    }
-                }
-            }
-        }
-    );
+        "name": &yaml_file.chall_name(),
+        "description": &yaml_file.description(),
+        "points": &yaml_file.points(),
+
+        "authors": &yaml_file.authors(),
+        "hints": &yaml_file.hints(),
+        "categories": &yaml_file.category_str_iter().collect::<Vec<&str>>(),
+        "tags": [], // TODO --> add tags in YamlShape
+        "links": complete_links,
+
+        "source_folder": meta.chall_name(), // TODO --> Add correct source_folder name, right now assumes chall_name
+        "visible": &yaml_file.visible(),
+        
+        "flag": &yaml_file.flag_str(),
+    });
+    let jsonbody = json!({
+        "sql": sql_payload,
+        "discord": developer_discord_payload,
+    });
 
     let response = emitter.post(webhook_address())
         .bearer_auth(deploy_token())
@@ -288,23 +282,15 @@ pub async fn send_deployment_failure(meta: &Metadata, err: String) -> Result<(),
     let poll_id = meta.poll_id();
     let emitter = Client::new();
 
-    let jsonbody = json!(
-        {
-            "_type": "DeploymentFailure",
-            "targets": {
-                "discord": {
-                    "content": format!("Failed to deploy **{}**\n({})\nCheck logs for more info", meta.chall_name(), poll_id),
-                    "urgency": "medium"
-                },
-                "frontend": {
-                    "poll_id": poll_id,
-                    "chall_id": uuid::Uuid::nil(),
-                    "message": format!("Failed to deploy {}. Check logs for info.", meta.chall_name()),
-                    "trace": err
-                }
-            }
-        }
-    );
+    let jsonbody = json!({
+        "discord": {
+            "__type": "developer",
+            "level": "WARN",
+            "message": format!("Failed to deploy **{}**\n({})\nCheck logs for more info", meta.chall_name(), poll_id),
+            "data": {},
+            "include_chall_writers": false,
+        },
+    });
 
     let response = emitter.post(webhook_address())
         .bearer_auth(deploy_token())
