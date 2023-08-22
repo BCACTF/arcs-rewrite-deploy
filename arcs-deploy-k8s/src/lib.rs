@@ -425,6 +425,8 @@ async fn create_schema_service(name: &str, params: &ChallengeParams) -> Result<S
                     "protocol": params.expose.protocol()
                 }
             ],
+            "externalIPs": [
+            ],
             "selector": {
                 "app": name
             },
