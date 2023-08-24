@@ -190,6 +190,7 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
         "visible": &yaml_file.visible(),
         
         "flag": &yaml_file.flag_str(),
+        "tiebreaker": &yaml_file.tiebreaker(),
     });
     let jsonbody = json!({
         "sql": sql_payload,
