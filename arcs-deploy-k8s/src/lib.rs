@@ -14,7 +14,7 @@ use network_protocol::*;
 
 #[allow(unused_macros)]
 pub mod logging {
-    use arcs_deploy_logging::with_target;
+    use arcs_logging_rs::with_target;
     with_target! { "arcs-deploy" }
 }
 
@@ -426,7 +426,6 @@ async fn create_schema_service(name: &str, params: &ChallengeParams) -> Result<S
                 }
             ],
             "externalIPs": [
-                "204.48.21.205"
             ],
             "selector": {
                 "app": name

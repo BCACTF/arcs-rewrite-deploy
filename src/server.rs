@@ -38,7 +38,7 @@ use actix_web_httpauth::middleware::HttpAuthentication;
 /// - `chall_name` - The name of the challenge that is being deployed
 #[derive(Deserialize)]
 pub struct Deploy {
-    _type : String,
+    __type : String,
     deploy_identifier: PollingId,
     chall_name: String,
 }
@@ -106,8 +106,8 @@ async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
             }.wrap()
         },
         _ => {
-            warn!("Endpoint {} not implemented on deploy server", info._type);
-            Response::endpoint_err(&info._type, meta).wrap()
+            warn!("Endpoint {} not implemented on deploy server", info.__type);
+            Response::endpoint_err(&info.__type, meta).wrap()
         },
     }
 }

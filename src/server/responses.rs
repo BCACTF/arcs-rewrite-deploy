@@ -288,7 +288,7 @@ impl From<&Deploy> for Metadata {
         Self {
             polling_id: deploy_input.deploy_identifier,
             chall_name: deploy_input.chall_name.clone(),
-            endpoint_name: deploy_input._type.to_uppercase(),
+            endpoint_name: deploy_input.__type.to_uppercase(),
             other_data: None,
         }
     }
