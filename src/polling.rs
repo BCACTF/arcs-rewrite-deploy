@@ -64,11 +64,13 @@ impl DeployStep {
 ///     - Returns the ports that the challenge/challenges is/are running on and the time deployment finished
 /// - `Failure` - The deployment failed
 ///     - Returns the error that caused the failure and the time that it occurred at
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum DeploymentStatus {
     InProgress(Instant, DeployStep),
     Success(Instant, Vec<i32>),
-    Failure(Instant, Response),
+    Failure(Instant, String),
+    #[default]
+    Unknown,
 }
 
 impl DeploymentStatus {
@@ -82,6 +84,7 @@ impl DeploymentStatus {
             InProgress(_, step) => step.get_str(),
             Success(_, _) => "success",
             Failure(_, _) => "failure",
+            Unknown => "unknown",
         }
     }
 
@@ -104,15 +107,21 @@ impl DeploymentStatus {
             Self::Success(instant, _) |
             Self::Failure(instant, _) |
             Self::InProgress(instant, _) => *instant,
+            Self::Unknown => Instant::now(),
         }
     }
 
-    pub fn finished_data(&self) -> Option<Result<Vec<i32>, Response>> {
+    pub fn finished_data(&self) -> Option<serde_json::Value> {
         match self {
-            Self::Success(_, ports) => Some(Ok(ports.clone())),
-            Self::Failure(_, response) => Some(Err(response.clone())),
+            Self::Success(_, ports) => Some(serde_json::to_value(ports).ok()?),
+            Self::Failure(_, response) => Some(serde_json::to_value(response).ok()?),
             Self::InProgress(..) => None,
+            Self::Unknown => None,
         }
+    }
+
+    pub fn since_last_change(&self) -> Duration {
+        Instant::now().duration_since(self.last_change())
     }
 }
 
@@ -120,7 +129,7 @@ impl DeploymentStatus {
 struct DeploymentStatusSerializable {
     current_status: &'static str,
     seconds_since_last_change: f64,
-    finished_meta: Option<Result<Vec<i32>, Response>>,
+    finished_meta: Option<serde_json::Value>,
 }
 impl DeploymentStatus {
     fn as_serializable(&self) -> DeploymentStatusSerializable {
@@ -182,10 +191,10 @@ pub fn register_chall_deployment(id: PollingId) -> Result<(), DeploymentStatus> 
 ///    - The duration since the last change in the deployment status
 #[derive(Debug, Clone, Serialize)]
 pub struct PollInfo {
-    id: PollingId,
-    status: DeploymentStatus,
-    poll_time: SystemTime,
-    duration_since_last_change: Duration,
+    pub (crate) id: PollingId,
+    pub (crate) status: DeploymentStatus,
+    pub (crate) poll_time: SystemTime,
+    pub (crate) duration_since_last_change: Duration,
 }
 
 impl From<(PollInfo, Metadata)> for Response {
@@ -240,10 +249,10 @@ pub fn advance_deployment_step(id: PollingId, new_step: Option<DeployStep>) -> R
 /// ## Returns
 /// - `Ok(DeploymentStatus)` : Returns the new `DeploymentStatus` if the `PollingId` was marked as successful
 /// - `Err(PollingId)` : Returns the `PollingId` if the given `PollingId` is already marked as finished
-pub fn fail_deployment(id: PollingId, response: Response) -> Result<DeploymentStatus, PollingId> {
+pub fn fail_deployment(id: PollingId, reason: String) -> Result<DeploymentStatus, PollingId> {
     if let Some(mut status) = CURRENT_DEPLOYMENTS.get_mut(&id) {
         if !status.is_finished() {
-            *status = DeploymentStatus::Failure(Instant::now(), response);
+            *status = DeploymentStatus::Failure(Instant::now(), reason);
             Ok(status.clone())
         } else {
             Err(id)

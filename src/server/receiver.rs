@@ -38,6 +38,18 @@ pub enum DeployProcessErr {
     Fetch(String),
     Deploy(String),
 }
+impl std::fmt::Display for DeployProcessErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FileUpload(files) => write!(f, "Failed to upload: {files:?}"),
+            Self::Build(e) => write!(f, "Failed to build: {e}"),
+            Self::Push(e) => write!(f, "Failed to push: {e}"),
+            Self::Pull(e) => write!(f, "Failed to pull: {e}"),
+            Self::Fetch(e) => write!(f, "Failed to fetch: {e}"),
+            Self::Deploy(e) => write!(f, "Failed to deploy: {e}"),
+        }
+    }
+}
 
 impl From<(DeployProcessErr, Metadata)> for Response {
     fn from((err, meta): (DeployProcessErr, Metadata)) -> Self {
@@ -225,7 +237,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
                 Ok(yaml) => yaml,
                 Err(e) => {
                     error!("Failed to fetch challenge yaml for {} ({}) with err {:?}", meta.chall_name(), polling_id, e);
-                    if fail_deployment(polling_id, (e, meta.clone()).into()).is_err() {
+                    if fail_deployment(polling_id, e.to_string()).is_err() {
                         error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
                     }
                     send_failure_message(&meta, "Fetch Challenge YAML").await;
@@ -234,7 +246,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
             }
         } else {
             error!("Failed to fetch challenge yaml for {} ({})", meta.chall_name(), polling_id);
-            if fail_deployment(polling_id, (YamlVerifyError::OsError, meta.clone()).into()).is_err() {
+            if fail_deployment(polling_id, YamlVerifyError::OsError.to_string()).is_err() {
                 error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
             }
             send_failure_message(&meta, "Fetch Challenge YAML").await;
@@ -247,7 +259,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
         } else {
             if let Err(failed_files) = deploy_static_files(&docker, meta.chall_name().as_str()).await {
                 error!("Failed to deploy static files {:?} for {} ({})", failed_files, meta.chall_name(), polling_id);
-                if fail_deployment(polling_id, (DeployProcessErr::FileUpload(failed_files), meta.clone()).into()).is_err() {
+                if fail_deployment(polling_id, DeployProcessErr::FileUpload(failed_files).to_string()).is_err() {
                     error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
                 }
                 send_failure_message(&meta, "Deploy Static Files").await;
@@ -289,7 +301,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
 
             if let Err(build_err) = build_challenge(&docker, &name, build_path, polling_id).await {
                 error!("Failed to build `{name}` ({polling_id}) with err {build_err:?}");
-                if fail_deployment(polling_id, (build_err, meta.clone()).into()).is_err() {
+                if fail_deployment(polling_id, build_err.to_string()).is_err() {
                     error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
                 }
                 send_failure_message(&meta, "Build").await;
@@ -300,7 +312,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
         
             if let Err(push_err) = push_challenge(&docker, &name, build_path, polling_id).await {
                 error!("Failed to push `{name}` ({polling_id}) with err {push_err:?}");
-                if fail_deployment(polling_id, (push_err, meta.clone()).into()).is_err() {
+                if fail_deployment(polling_id, push_err.to_string()).is_err() {
                     error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
                 }
                 send_failure_message(&meta, "Push").await;
@@ -318,7 +330,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
                 },
                 Err(deploy_err) => {
                     error!("Failed to deploy `{name}` ({polling_id}) with err {deploy_err:?}");
-                    if fail_deployment(polling_id, (deploy_err, meta.clone()).into()).is_err() {
+                    if fail_deployment(polling_id, deploy_err.to_string()).is_err() {
                         error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
                     }
                     send_failure_message(&meta, "Deploy").await;
@@ -329,7 +341,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
             // FIXME --> This might break if there are two different deployed containers that have a weird container/image name --> fix will most likely include server type possibly??
             if let Err(failed_files) = deploy_static_files(&docker, meta.chall_name().as_str()).await {
                 error!("Failed to deploy static files {:?} for {} ({})", failed_files, meta.chall_name(), polling_id);
-                if fail_deployment(polling_id, (DeployProcessErr::FileUpload(failed_files), meta.clone()).into()).is_err() {
+                if fail_deployment(polling_id, DeployProcessErr::FileUpload(failed_files).to_string()).is_err() {
                     error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
                 }
                 send_failure_message(&meta, "Deploy Static Files").await;
@@ -346,11 +358,20 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
         };
     });
 
+    // Ok(Response::success(
+    //     meta,
+    //     Some(json!({
+    //         "status": "Deployment started successfully", 
+    //         "message": polling_id,
+    //     })),
+    // ))
     Ok(Response::success(
         meta,
         Some(json!({
-            "status": "Deployment started successfully", 
-            "message": polling_id,
+            "status": "STARTED",
+            "status_time": 0,
+            "chall_id": polling_id,
+            "data": "yayyyy",
         })),
     ))
 }

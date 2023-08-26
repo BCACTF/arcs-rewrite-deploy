@@ -100,9 +100,11 @@ async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
             delete_challenge(&docker, &k8s, meta).await.wrap()
         },
         "POLL" => {
-            match poll_deployment(info.deploy_identifier) {
-                Ok(info) => Response::success(meta, serde_json::to_value(info).ok()),
-                Err(poll_id) => Response::poll_id_doesnt_exist(poll_id, meta),
+            let metadata = Metadata::from(&info.0);
+            if metadata.status_is_unknown() {
+                Response::poll_id_doesnt_exist(info.0.deploy_identifier, metadata)
+            } else {
+                Response::success(metadata, None)
             }.wrap()
         },
         _ => {
