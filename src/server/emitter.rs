@@ -208,13 +208,14 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
                 info!("Successfully sent DeploymentSuccess message to webhook server");
                 info!("Sending DeploymentSuccess message to Frontend server");
                 
-                let chall_id : Uuid = if let Some(chall_id) = resp.json().await.ok().and_then(get_db_id) {
-                    chall_id
-                } else { 
-                    // TODO --> add better handling of the error here
-                    error!("FAILED"); 
-                    return Err("Failed to get database id from webhook server".to_string());
-                };
+                // let chall_id : Uuid = if let Some(chall_id) = resp.json().await.ok().and_then(get_db_id) {
+                //     chall_id
+                // } else { 
+                //     // TODO --> add better handling of the error here
+                //     error!("FAILED"); 
+                //     return Err("Failed to get database id from webhook server".to_string());
+                // };
+                let chall_id : Uuid = meta.poll_id();
                 
 
                 let frontend_body = json!({

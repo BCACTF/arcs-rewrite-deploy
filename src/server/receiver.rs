@@ -221,7 +221,9 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
 
 
     if let Err(status) = register_chall_deployment(polling_id) {
-        return Err(Response::poll_id_already_in_use(polling_id, status, meta));
+        if !status.is_finished() {
+            return Err(Response::poll_id_already_in_use(polling_id, status, meta));
+        }
     }
 
     let spawn_meta = meta.clone();
