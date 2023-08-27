@@ -2,7 +2,6 @@ use std::io::Read;
 use std::{path::PathBuf, fs::read_to_string};
 
 use arcs_deploy_docker::fetch_container_file;
-use reqwest::Client;
 
 #[allow(unused_macros)]
 pub mod logging {
@@ -16,6 +15,9 @@ pub mod env;
 use env::*;
 
 use arcs_yaml_parser::{YamlShape, YamlVerifyError, File};
+use reqwest::header::{HeaderName, HeaderMap};
+use s3::Bucket;
+use s3::creds::Credentials;
 use shiplift::Docker; 
 
 // TODO --> Move this into yaml crate
@@ -33,6 +35,8 @@ pub async fn get_container_file_data(name: &str, file: &File, docker: &Docker) -
     };
             
     info!("Deploying files in container for challenge: {}", name);
+    warn!("At the moment, this is currently NOT functioning if running a multi-server cluster.");
+    warn!("To fix, build the container on the same server as this one and redeploy.");
 
     let container_file = fetch_container_file(docker, name, file.path()).await;
     let Ok(file_data) = container_file else {
@@ -85,10 +89,26 @@ pub async fn get_container_file_data(name: &str, file: &File, docker: &Docker) -
     }
 }
 
+pub fn create_s3_client() -> Result<s3::Bucket, s3::error::S3Error> {
+    Bucket::new(
+        s3_bucket_name(),
+        s3::Region::Custom { region: s3_region().to_string(), endpoint: s3_bucket_url().to_string() },
+        // Credentials are collected from environment, config, profile or instance metadata
+        Credentials::new(Some(s3_access_key()), Some(s3_bearer_token()), None, None, None).unwrap(),
+    )
+}
+
 // TODO --> if it is not relative (if its a url), add new function flow
-pub async fn deploy_static_files(docker: &Docker, chall_name: &str) -> Result<Vec<File>, Vec<File>> {
+pub async fn deploy_static_files(docker: &Docker, chall_name: &str) -> Result<Vec<File>,  Vec<File>> {
     info!("Deploying static challenge: {}", chall_name);
-    let client = Client::new();
+
+    let bucket = match create_s3_client() {
+        Ok(bucket) => bucket,
+        Err(e) => {
+            error!("Failed to create S3 client: {:#?}", e);
+            return Err(vec![]);
+        }
+    };
 
     let yaml = match fetch_chall_yaml(chall_name) {
         Some(yaml_result) => {
@@ -119,7 +139,6 @@ pub async fn deploy_static_files(docker: &Docker, chall_name: &str) -> Result<Ve
 
     for file in files {
         let url = {
-            let base = s3_bucket_url().trim_matches('/');
             let chall = chall_name.trim_matches('/');
     
             let file = if let Some(file_path) = file.path().to_str() {
@@ -134,24 +153,25 @@ pub async fn deploy_static_files(docker: &Docker, chall_name: &str) -> Result<Ve
             };
 
             info!("{:?}", file);
-
-            format!("{base}{chall}/{file}")
+            trace!("Pushing path: /{}/{}", chall, file);
+            format!("/{chall}/{file}")
         };
-
 
         let Some(filedata): Option<Vec<u8>> = get_container_file_data(chall_name, &file, docker).await else {
             return Err(vec![]);
         };
 
-        let res = client
-            .post(&url)
-            .bearer_auth(s3_bearer_token())
-            .body(filedata)
-            .send()
-            .await;
+        let mut custom_headers = HeaderMap::new();
+        custom_headers.insert(
+            HeaderName::from_static("x-amz-acl"),
+            "public-read".parse().unwrap(),
+        );
+
+        let res = bucket.with_extra_headers(custom_headers).put_object(url, &filedata).await;
+        
 
         match res {
-            Ok(res) if res.status().is_success() => success.push(file),
+            Ok(res) if (res.status_code() == 200) => success.push(file),
             error => {
                 error!("Failed to upload file: {:#?}", error);
                 warn!("Ensure CDN auth token is valid.");

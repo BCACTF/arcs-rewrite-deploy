@@ -18,3 +18,5 @@ arcs-logging-rs = "0.1.2"
 arcs-deploy-env = { version = "0.1.0", path = "../arcs-deploy-env" }
 arcs-yaml-parser = { version = "0.1.0", path = "../arcs-yaml" }
 arcs-deploy-docker = { version = "0.1.0", path = "../arcs-deploy-docker" }
+
+rust-s3 = "0.33.0"
