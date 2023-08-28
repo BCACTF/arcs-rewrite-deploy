@@ -34,7 +34,8 @@ impl DeployStep {
     pub fn get_str(&self) -> &'static str {
         use DeployStep::*;
         
-        create_prefix!("in_progress:");
+        // create_prefix!("in_progress:");
+        create_prefix!("");
 
         match self {
             Building => prefix!("building"),
