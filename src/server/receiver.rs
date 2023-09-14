@@ -224,6 +224,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
         if !status.is_finished() {
             return Err(Response::poll_id_already_in_use(polling_id, status, meta));
         }
+        crate::polling::_update_deployment_state(polling_id, crate::polling::DeploymentStatus::InProgress(std::time::Instant::now(), crate::polling::DeployStep::Building));
     }
 
     let spawn_meta = meta.clone();
