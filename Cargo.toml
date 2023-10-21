@@ -19,6 +19,8 @@ arcs-deploy-k8s = { version = "0.1.0", path = "./arcs-deploy-k8s" }
 arcs-deploy-env = { version = "0.1.0", path = "./arcs-deploy-env" }
 arcs-deploy-static = { version = "0.1.0", path="./arcs-deploy-static" }
 arcs-yaml-parser = { version = "0.1.0", path = "./arcs-yaml" }
+arcs-yaml-editor = { version = "0.1.0", path = "./arcs-yaml-editor" }
+
 
 shiplift = { git = "https://github.com/fortanix/shiplift", branch = "master" }
 dotenv = "0.15.0"

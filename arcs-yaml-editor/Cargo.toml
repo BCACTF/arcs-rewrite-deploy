@@ -1,0 +1,9 @@
+[package]
+name = "arcs-yaml-editor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+marked-yaml = "0.2.0"
+yaml-rust = { version = "0.5", package = "yaml-rust-davvid" }
+hashlink = "0.8.4"
