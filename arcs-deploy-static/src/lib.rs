@@ -20,11 +20,15 @@ use s3::Bucket;
 use s3::creds::Credentials;
 use shiplift::Docker; 
 
-// TODO --> Move this into yaml crate
-pub fn fetch_chall_yaml(chall_folder_name: &str) -> Option<Result<YamlShape, YamlVerifyError>> {
+// TODO --> Find a more elegant way to do this
+pub fn chall_yaml_path(chall_folder_name: &str) -> PathBuf {
     let folder_path = PathBuf::from_iter([chall_folder_default(), chall_folder_name]);
-    let yaml_path = folder_path.join("chall.yaml");
-    let yaml_data = read_to_string(&yaml_path).ok()?;
+    folder_path.join("chall.yaml")
+}
+
+pub fn fetch_chall_yaml(chall_folder_name: &str) -> Option<Result<YamlShape, YamlVerifyError>> {
+    let folder_path = chall_yaml_path(chall_folder_name);
+    let yaml_data = read_to_string(&folder_path).ok()?;
 
     Some(YamlShape::try_from_str(&yaml_data, &Default::default(), Some(&folder_path)))
 }

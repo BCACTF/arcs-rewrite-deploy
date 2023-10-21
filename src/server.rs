@@ -3,7 +3,10 @@ pub mod receiver;
 pub mod responses;
 
 use responses::{ Response, Metadata };
-use actix_web::{ post, App, HttpServer, web, Responder };
+use actix_web::{ App, HttpServer, web, Responder };
+use arcs_yaml_editor::Modifications;
+
+use actix_web::post;
 use arcs_deploy_docker::docker_login;
 use arcs_deploy_k8s::create_client;
 use kube::Client;
@@ -11,10 +14,11 @@ use serde::Deserialize;
 use shiplift::Docker;
 
 use crate::auth::validate_auth_token;
-use crate::receiver::{ delete_challenge, spawn_deploy_req };
+use crate::receiver::{ delete_challenge, spawn_deploy_req, update_yaml };
+use crate::emitter::sync_metadata_with_webhook;
 
 use crate::logging::*;
-use crate::polling::{ PollingId, poll_deployment };
+use crate::polling::PollingId;
 
 use crate::env::{port, deploy_address};
 
@@ -41,6 +45,7 @@ pub struct Deploy {
     __type : String,
     deploy_identifier: PollingId,
     chall_name: String,
+    modifications: Option<Modifications>,
 }
 
 /// Generates a Docker and K8s client for use in the deploy server
@@ -107,6 +112,20 @@ async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
                 Response::success(metadata, None)
             }.wrap()
         },
+        "MODIFY_META" => {
+            let meta = Metadata::from(&info.0);
+
+            let Some(modifications) = info.0.modifications else {
+                return Response::modifications_missing(meta).wrap();
+            };
+
+            let new_yaml = match update_yaml(meta.chall_name(), modifications, &meta).await {
+                Ok(new_yaml) => new_yaml,
+                Err(resp) => return resp,
+            };
+
+            sync_metadata_with_webhook(&meta, new_yaml).await.wrap()
+        }
         _ => {
             warn!("Endpoint {} not implemented on deploy server", info.__type);
             Response::endpoint_err(&info.__type, meta).wrap()

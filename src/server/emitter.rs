@@ -13,6 +13,8 @@ use crate::logging::*;
 use crate::env::{webhook_address, deploy_token, s3_display_address, deploy_address};
 use crate::server::responses::Metadata;
 
+use super::responses::Response;
+
 
 pub async fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<Vec<String>, String> {
     let mut static_file_links : Vec<String> = Vec::new();
@@ -118,6 +120,7 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
             if targettype_ports.0 == DeployTargetType::Nc {
                 if let Some((_, ip)) = deploy_address().split_once("://") {
                     for port in targettype_ports.1.iter() {
+                        
                         let ip = "challs.bcactf.com"; // TODO --> remove this after event
 
                         complete_links.push(
@@ -322,3 +325,59 @@ pub async fn send_deployment_failure(meta: &Metadata, err: String) -> Result<(),
         }
     }
 }
+
+
+// TODO - validate return types of this function
+// TODO - Actually make the SQL, Main, Discord branches send out the correct information
+pub async fn sync_metadata_with_webhook(meta: &Metadata, new_yaml: YamlShape) -> Response {
+    let emitter = Client::new();
+
+    let sql_payload = json!({
+        "__type": "chall",
+        "query_name": "update",
+
+        "id": meta.poll_id(),
+        "name": &new_yaml.chall_name(),
+        "description": &new_yaml.description(),
+        "points": &new_yaml.points(),
+        "categories": &new_yaml.category_str_iter().collect::<Vec<&str>>(),
+        "tags": [], // TODO --> add tags in YamlShape
+    });
+    let jsonbody = json!({
+        "sql": sql_payload,
+    });
+
+    let response = emitter.post(webhook_address())
+        .bearer_auth(deploy_token())
+        .json(&jsonbody)
+        .send()
+        .await;
+
+    match response {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                info!("Successfully sent DeploymentSuccess message to webhook server");
+                
+                Response::success(meta.clone(), None)
+            } else {
+                error!("Error sending DeploymentSuccess message to webhook server : Bad status code returned");
+                error!("Trace: {:#?}", resp);
+
+                if resp.status() == 401 {
+                    warn!("Webhook server returned 401 Unauthorized. Check that the DEPLOY_SERVER_AUTH_TOKEN is correct");
+                }
+
+                Response::ise("Error sending DeploymentSuccess message to webhook server", meta.clone())
+            }
+        },
+        Err(err) => {
+            error!("Error sending DeploymentSuccess message to webhook server");
+            error!("Trace: {:#?}", err);
+
+            Response::ise("Error sending DeploymentSuccess message to webhook server", meta.clone())
+
+        }
+    }
+}
+
+

@@ -56,9 +56,16 @@ impl StatusCode {
     // endpoint failures
     pub const ENDPOINT_NO_EXIST_ERR: Self = StatusCode { code: 404, message: cowify("Endpoint is not set up on the server") };
 
+    // No challenge of that name
+    pub const CHALL_NAME_NO_EXISTS_ERR: Self = StatusCode { code: 430, message: cowify("There is no challenge with this name") };
+
     // polling failures
     pub const POLLID_ALREADY_EXISTS_ERR: Self = StatusCode { code: 440, message: cowify("Polling ID already exists") };
     pub const POLLID_INVAL_NOEXISTS_ERR: Self = StatusCode { code: 441, message: cowify("Polling ID is unregistered") };
+
+    // metadata modification failures
+    pub const MODICATIONS_MISSING: Self = StatusCode { code: 460, message: cowify("You must specify the modifications to make to the metadata") };
+    pub const MODICATIONS_FAILED: Self = StatusCode { code: 561, message: cowify("Failed to modify the metadata. This MIGHT be an issue with the file.") };
     
     // client login failures
     pub const DOCKER_LOGIN_ERR: Self = StatusCode { code: 510, message: cowify("Failure initializing Docker client") };
@@ -150,6 +157,21 @@ impl Response {
 
 // 440 poll id
 impl Response {
+    pub fn chall_doesnt_exist(chall_name: &str, meta: Metadata) -> Self {
+        Self {
+            internal_code: StatusCode::CHALL_NAME_NO_EXISTS_ERR,
+
+            status_time: meta.status.since_last_change(),
+            status: meta.status.get_str(),
+            chall_name: Some(chall_name.to_string()),
+            poll_id: meta.poll_id,
+
+            data: Some(json!({
+                "unknown_challenge": chall_name,
+            })),
+        }
+    }
+
     pub fn poll_id_doesnt_exist(poll_id: PollingId, meta: Metadata) -> Self {
         Self {
             internal_code: StatusCode::POLLID_INVAL_NOEXISTS_ERR,
@@ -179,6 +201,32 @@ impl Response {
                 "in_use_poll_id": poll_id,
                 "status_of_in_use": status,
             }))
+        }
+    }
+
+    pub fn modifications_missing(meta: Metadata) -> Self {
+        Self {
+            internal_code: StatusCode::MODICATIONS_MISSING,
+
+            status_time: meta.status.since_last_change(),
+            status: meta.status.get_str(),
+            chall_name: Some(meta.chall_name),
+            poll_id: meta.poll_id,
+
+            data: None,
+        }
+    }
+
+    pub fn modifications_failed(meta: Metadata) -> Self {
+        Self {
+            internal_code: StatusCode::MODICATIONS_FAILED,
+
+            status_time: meta.status.since_last_change(),
+            status: meta.status.get_str(),
+            chall_name: Some(meta.chall_name),
+            poll_id: meta.poll_id,
+
+            data: None,
         }
     }
 }

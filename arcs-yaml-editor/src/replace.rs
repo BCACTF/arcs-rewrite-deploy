@@ -15,14 +15,14 @@ fn get_hash(key: &str, value: Yaml) -> Yaml {
     Yaml::Hash(hash_map)
 }
 
-fn format_yaml_pretty(yaml: &Yaml) -> String {
+fn format_yaml_pretty(yaml: &Yaml) -> Option<String> {
     let mut replacement = String::new();
     let mut emitter = YamlEmitter::new(&mut replacement);
     emitter.compact(false);
     emitter.multiline_strings(true);
-    emitter.dump(yaml);
+    emitter.dump(yaml).ok()?;
 
-    replacement.trim_start_matches("---\n").to_string()
+    Some(replacement.trim_start_matches("---\n").to_string())
 }
 
 pub fn try_replace(yaml_str: &str, key: &str, new_val: Yaml, span: (usize, usize)) -> Option<String> {
@@ -31,7 +31,7 @@ pub fn try_replace(yaml_str: &str, key: &str, new_val: Yaml, span: (usize, usize
     let before: &str = &yaml_str[..span.0];
     let after: &str = &yaml_str[span.1..];
 
-    Some(format!("{}{}{}", before, format_yaml_pretty(&yaml), after))
+    Some(format!("{}{}{}", before, format_yaml_pretty(&yaml)?, after))
 }
 
 pub fn try_replace_name(yaml_str: &str, new_name: &str) -> Option<String> {
@@ -52,15 +52,15 @@ pub fn try_replace_description(yaml_str: &str, new_description: &str) -> Option<
     try_replace(yaml_str, "description", Yaml::String(new_description.to_string()), locations.description)
 }
 
-pub fn try_replace_categories(yaml_str: &str, new_categories: &[&str]) -> Option<String> {
+pub fn try_replace_categories<T: ToOwned<Owned = String>>(yaml_str: &str, new_categories: &[T]) -> Option<String> {
     let locations = Locations::try_find(yaml_str)?;
 
-    let new_categories = new_categories.iter().map(|s| Yaml::String(s.to_string())).collect::<Vec<_>>();
+    let new_categories = new_categories.iter().map(|s| Yaml::String(s.to_owned())).collect::<Vec<_>>();
 
     try_replace(yaml_str, "categories", Yaml::Array(new_categories), locations.categories)
 }
 
-pub fn try_replace_tags(yaml_str: &str, new_tags: &[&str]) -> Option<String> {
+pub fn try_replace_tags<T: ToOwned<Owned = String>>(yaml_str: &str, new_tags: &[T]) -> Option<String> {
     let locations = Locations::try_find(yaml_str)?;
 
     if new_tags.len() == 0 {
@@ -71,7 +71,7 @@ pub fn try_replace_tags(yaml_str: &str, new_tags: &[&str]) -> Option<String> {
         };
     }
 
-    let new_tags = new_tags.iter().map(|s| Yaml::String(s.to_string())).collect::<Vec<_>>();
+    let new_tags = new_tags.iter().map(|s| Yaml::String(s.to_owned())).collect::<Vec<_>>();
 
     if let Some(span) = locations.tags {
         try_replace(yaml_str, "tags", Yaml::Array(new_tags), span)
@@ -80,7 +80,7 @@ pub fn try_replace_tags(yaml_str: &str, new_tags: &[&str]) -> Option<String> {
         Some(format!(
             "{}\n{}",
             yaml_str.trim_end_matches('\n'),
-            format_yaml_pretty(&yaml)
+            format_yaml_pretty(&yaml)?,
         ))
     }
 }

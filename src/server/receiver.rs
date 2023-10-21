@@ -3,8 +3,9 @@ use std::path::Path;
 use arcs_deploy_docker::{ build_image, delete_image as delete_docker_image, push_image, pull_image };
 use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge, get_chall_folder};
 
+use arcs_yaml_editor::Modifications;
 use arcs_yaml_parser::deploy::structs::{DeployTarget, DeployTargetType};
-use arcs_yaml_parser::{File, YamlVerifyError};
+use arcs_yaml_parser::{File, YamlVerifyError, YamlShape};
 use kube::Client;
 use shiplift::Docker;
 use super::responses::{ Metadata, Response };
@@ -14,7 +15,7 @@ use crate::emitter::{send_deployment_success, send_deployment_failure};
 use crate::logging::*;
 use crate::polling::{ PollingId, register_chall_deployment, fail_deployment, succeed_deployment, advance_deployment_step };
 
-use arcs_deploy_static::deploy_static_files;
+use arcs_deploy_static::{deploy_static_files, fetch_chall_yaml, chall_yaml_path};
 
 #[derive(Debug, Clone)]
 pub struct BuildChallengeErr(String);
@@ -224,16 +225,23 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
         if !status.is_finished() {
             return Err(Response::poll_id_already_in_use(polling_id, status, meta));
         }
-        crate::polling::_update_deployment_state(polling_id, crate::polling::DeploymentStatus::InProgress(std::time::Instant::now(), crate::polling::DeployStep::Building));
+        let failed_to_update_poll_id = crate::polling::_update_deployment_state(
+            polling_id,
+            crate::polling::DeploymentStatus::InProgress(
+                std::time::Instant::now(),
+                crate::polling::DeployStep::Building,
+            ),
+        ).is_err();
+        if failed_to_update_poll_id {
+            return Err(Response::ise("Failed to update deployment state", meta));
+        }
     }
 
     let spawn_meta = meta.clone();
     tokio::spawn(async move {
         let meta = spawn_meta;
 
-        use arcs_deploy_static::fetch_chall_yaml;
         let chall_yaml = fetch_chall_yaml(meta.chall_name().as_str());
-
 
         let chall_yaml = if let Some(chall_yaml) = chall_yaml {
             match chall_yaml {
@@ -377,6 +385,36 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
             "data": "yayyyy",
         })),
     ))
+}
+
+pub async fn update_yaml(chall_folder_name: &str, modifications: Modifications, meta: &Metadata) -> Result<YamlShape, actix_web::web::Json<Response>> {
+    use tokio::fs::{ read_to_string, write };
+
+    let meta = meta.clone();
+
+    let yaml_location = chall_yaml_path(chall_folder_name);
+    let Ok(old_yaml) = read_to_string(&yaml_location).await else {
+        return Err(Response::chall_doesnt_exist(chall_folder_name, meta).wrap());
+    };
+
+    match modifications.apply(&old_yaml) {
+        Some(new_yaml) => if let Err(e) = write(&yaml_location, new_yaml).await {
+            return Err(Response::ise(&e.to_string(), meta).wrap());
+        },
+        None => return Err(Response::modifications_failed(meta).wrap()),
+    };
+
+    let Some(Ok(new_yaml)) = fetch_chall_yaml(chall_folder_name) else {
+        if std::fs::write(&yaml_location, old_yaml).is_ok() {
+            error!("Invalid chall YAML created! Failed to roll back. THIS IS SOMETHING TO BE LOOKED INTO.");
+            return Err(Response::ise("Invalid chall YAML created! Reverted.", meta).wrap());
+        } else {
+            error!("Invalid chall YAML created! Failed to roll back. THIS IS A CRITICAL ERROR!");
+            return Err(Response::ise("Invalid chall YAML created! Failed to roll back.", meta).wrap());
+        }
+    };
+
+    Ok(new_yaml)
 }
 
 async fn send_failure_message(meta: &Metadata, message: &str) {
