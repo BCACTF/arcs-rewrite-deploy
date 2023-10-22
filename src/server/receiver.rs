@@ -1,8 +1,10 @@
 use std::path::Path;
+use std::str::FromStr;
 
 use arcs_deploy_docker::{ build_image, delete_image as delete_docker_image, push_image, pull_image };
 use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge, get_chall_folder};
 
+use arcs_deploy_static::env::chall_folder_default;
 use arcs_yaml_editor::Modifications;
 use arcs_yaml_parser::deploy::structs::{DeployTarget, DeployTargetType};
 use arcs_yaml_parser::{File, YamlVerifyError, YamlShape};
@@ -12,6 +14,8 @@ use super::responses::{ Metadata, Response };
 use serde_json::json;
 
 use crate::emitter::{send_deployment_success, send_deployment_failure};
+use crate::env::{git_email, git_branch, git_key_path};
+use crate::git::{make_repo_commit, ensure_repo_up_to_date};
 use crate::logging::*;
 use crate::polling::{ PollingId, register_chall_deployment, fail_deployment, succeed_deployment, advance_deployment_step };
 
@@ -392,7 +396,10 @@ pub async fn update_yaml(chall_folder_name: &str, modifications: Modifications, 
 
     let meta = meta.clone();
 
+    ensure_repo_up_to_date(Path::new(chall_folder_default()), &meta).map_err(Response::wrap)?;
+
     let yaml_location = chall_yaml_path(chall_folder_name);
+    let yaml_location_relative = std::path::PathBuf::from_iter([chall_folder_name, "chall.yaml"].into_iter());
     let Ok(old_yaml) = read_to_string(&yaml_location).await else {
         return Err(Response::chall_doesnt_exist(chall_folder_name, meta).wrap());
     };
@@ -400,13 +407,20 @@ pub async fn update_yaml(chall_folder_name: &str, modifications: Modifications, 
     debug!("{old_yaml}");
     if let Some(new_yaml) = modifications.apply(&old_yaml) {
         debug!("{new_yaml}");
+        if new_yaml == old_yaml {
+            return Err(Response::modifications_failed(meta).wrap());
+        }
     }
 
     match modifications.apply(&old_yaml) {
         Some(new_yaml) => if let Err(e) = write(&yaml_location, new_yaml).await {
+            error!("Failed to write new chall.yaml");
             return Err(Response::ise(&e.to_string(), meta).wrap());
         },
-        None => return Err(Response::modifications_failed(meta).wrap()),
+        None => {
+            error!("Failed to apply modifications to chall.yaml");
+            return Err(Response::modifications_failed(meta).wrap())
+        },
     };
 
     debug!("{chall_folder_name}");
@@ -432,6 +446,8 @@ pub async fn update_yaml(chall_folder_name: &str, modifications: Modifications, 
             }
         },
     };
+
+    make_repo_commit(Path::new(chall_folder_default()), &yaml_location_relative, &meta).map_err(Response::wrap)?;
 
     Ok(new_yaml)
 }

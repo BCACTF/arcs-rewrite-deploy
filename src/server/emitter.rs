@@ -347,13 +347,15 @@ pub async fn sync_metadata_with_webhook(meta: &Metadata, new_yaml: YamlShape) ->
         "sql": sql_payload,
     });
 
-    println!("aaaaaaaaaaaaaaa");
+    trace!("built JSON body");
 
     let response = emitter.post(webhook_address())
         .bearer_auth(deploy_token())
         .json(&jsonbody)
         .send()
         .await;
+
+    trace!("Sent req");
 
     match response {
         Ok(resp) => {
