@@ -397,6 +397,11 @@ pub async fn update_yaml(chall_folder_name: &str, modifications: Modifications, 
         return Err(Response::chall_doesnt_exist(chall_folder_name, meta).wrap());
     };
 
+    debug!("{old_yaml}");
+    if let Some(new_yaml) = modifications.apply(&old_yaml) {
+        debug!("{new_yaml}");
+    }
+
     match modifications.apply(&old_yaml) {
         Some(new_yaml) => if let Err(e) = write(&yaml_location, new_yaml).await {
             return Err(Response::ise(&e.to_string(), meta).wrap());
@@ -404,14 +409,28 @@ pub async fn update_yaml(chall_folder_name: &str, modifications: Modifications, 
         None => return Err(Response::modifications_failed(meta).wrap()),
     };
 
-    let Some(Ok(new_yaml)) = fetch_chall_yaml(chall_folder_name) else {
-        if std::fs::write(&yaml_location, old_yaml).is_ok() {
-            error!("Invalid chall YAML created! Failed to roll back. THIS IS SOMETHING TO BE LOOKED INTO.");
-            return Err(Response::ise("Invalid chall YAML created! Reverted.", meta).wrap());
-        } else {
-            error!("Invalid chall YAML created! Failed to roll back. THIS IS A CRITICAL ERROR!");
-            return Err(Response::ise("Invalid chall YAML created! Failed to roll back.", meta).wrap());
-        }
+    debug!("{chall_folder_name}");
+    let new_yaml = match fetch_chall_yaml(chall_folder_name) {
+        Some(Ok(new_yaml)) => new_yaml,
+        Some(Err(e)) => {
+            debug!("Yaml error: {e}");
+            if std::fs::write(&yaml_location, old_yaml).is_ok() {
+                error!("Invalid chall YAML created! Rolled back successfully. THIS IS SOMETHING TO BE LOOKED INTO.");
+                return Err(Response::ise("Invalid chall YAML created! Reverted.", meta).wrap());
+            } else {
+                error!("Invalid chall YAML created! Failed to roll back. THIS IS A CRITICAL ERROR!");
+                return Err(Response::ise("Invalid chall YAML created! Failed to roll back.", meta).wrap());
+            }
+        },
+        None => {
+            if std::fs::write(&yaml_location, old_yaml).is_ok() {
+                error!("Couldn't find chall.yaml! Rolled back successfully. THIS IS SOMETHING TO BE LOOKED INTO.");
+                return Err(Response::ise("Couldn't find chall.yaml! Reverted.", meta).wrap());
+            } else {
+                error!("Couldn't find chall.yaml! Failed to roll back. THIS IS A CRITICAL ERROR!");
+                return Err(Response::ise("Couldn't find chall.yaml! Failed to roll back.", meta).wrap());
+            }
+        },
     };
 
     Ok(new_yaml)

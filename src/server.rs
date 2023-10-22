@@ -119,10 +119,16 @@ async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
                 return Response::modifications_missing(meta).wrap();
             };
 
+            trace!("Modifications existed, moving on to updating yaml");
+
+            debug!("{meta:?} {modifications:?}");
+
             let new_yaml = match update_yaml(meta.chall_name(), modifications, &meta).await {
                 Ok(new_yaml) => new_yaml,
                 Err(resp) => return resp,
             };
+
+            trace!("YAML updated correctly, moving on to webhook sync");
 
             sync_metadata_with_webhook(&meta, new_yaml).await.wrap()
         }

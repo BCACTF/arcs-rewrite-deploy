@@ -27,8 +27,9 @@ pub fn chall_yaml_path(chall_folder_name: &str) -> PathBuf {
 }
 
 pub fn fetch_chall_yaml(chall_folder_name: &str) -> Option<Result<YamlShape, YamlVerifyError>> {
-    let folder_path = chall_yaml_path(chall_folder_name);
-    let yaml_data = read_to_string(&folder_path).ok()?;
+    let yaml_path = chall_yaml_path(chall_folder_name);
+    let folder_path = yaml_path.parent()?;
+    let yaml_data = read_to_string(&yaml_path).ok()?;
 
     Some(YamlShape::try_from_str(&yaml_data, &Default::default(), Some(&folder_path)))
 }
