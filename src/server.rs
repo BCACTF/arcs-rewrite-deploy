@@ -1,6 +1,7 @@
 pub mod emitter;
 pub mod receiver;
 pub mod responses;
+pub mod utils;
 
 use responses::{ Response, Metadata };
 use actix_web::{ App, HttpServer, web, Responder };

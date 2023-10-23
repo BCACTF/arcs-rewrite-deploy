@@ -1,7 +1,6 @@
 mod server;
 mod polling;
 mod auth;
-mod git;
 
 pub mod env;
 

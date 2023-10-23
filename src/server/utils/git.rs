@@ -1,6 +1,7 @@
+
 use std::path::Path;
 use git2::build::CheckoutBuilder;
-use git2::{Repository, Remote, ObjectType, ResetType, FetchOptions, AutotagOption, Signature, BranchType, PushOptions};
+use git2::{Repository, Remote, ObjectType, ResetType, FetchOptions, AutotagOption, Signature, PushOptions};
 
 use crate::server::responses::{Metadata, Response};
 use crate::env::{ git_branch, git_email, git_key_path };

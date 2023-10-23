@@ -81,7 +81,6 @@ pub fn get_db_id(json: serde_json::Value) -> Option<Uuid> {
 // TODO - validate return types of this function
 // TODO - Actually make the SQL, Main, Discord branches send out the correct information
 pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployTargetType, Vec<i32>)>>) -> Result<(), String> {
-    let poll_id = meta.poll_id();
     let emitter = Client::new();
     
     let yaml_file = if let Some(yaml_file) = fetch_chall_yaml(meta.chall_name()) {
@@ -296,6 +295,8 @@ pub async fn send_deployment_failure(meta: &Metadata, err: String) -> Result<(),
             "include_chall_writers": false,
         },
     });
+
+    info!("Sending deployment failure (err: {err:?})");
 
     let response = emitter.post(webhook_address())
         .bearer_auth(deploy_token())
