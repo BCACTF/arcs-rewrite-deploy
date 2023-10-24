@@ -149,9 +149,9 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
     let mut disc_message = String::with_capacity(240);
 
     if let Some(ports) = ports.as_ref() {
-        write!(disc_message, "Successfully deployed **{}** on port(s) {ports:?}", meta.chall_name())
+        writeln!(disc_message, "Successfully deployed **{}** on port(s) {ports:?}", meta.chall_name())
     } else {
-        write!(disc_message, "Successfully deployed **{}**. No ports provided", meta.chall_name())
+        writeln!(disc_message, "Successfully deployed **{}**. No ports provided", meta.chall_name())
     }.map_err(|e| e.to_string())?;
 
     if !complete_links.is_empty() {
@@ -161,7 +161,7 @@ pub async fn send_deployment_success(meta: &Metadata, ports: Option<Vec<(DeployT
             let link_to_file_link = &link_to_file.link;
 
             let server_type = link_to_file.deploy_target.resource_type();
-            write!(disc_message, "{server_type} at: {link_to_file_link}").map_err(|e| e.to_string())?;
+            writeln!(disc_message, "{server_type} at: {link_to_file_link}").map_err(|e| e.to_string())?;
         }
     }
 
