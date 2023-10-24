@@ -1,3 +1,4 @@
+use actix_web::{Responder, CustomizeResponder, web::Json};
 use arcs_yaml_parser::YamlVerifyError;
 use serde::Serialize;
 use serde_json::{ json, Value };
@@ -325,8 +326,11 @@ impl Response {
 
 impl Response {
     /// Convenience function that wraps the response in a `actix_web::web::Json` object to return to the client
-    pub fn wrap(self) -> actix_web::web::Json<Self> {
-        actix_web::web::Json(self)
+    pub fn wrap(self) -> CustomizeResponder<Json<Self>> {
+        use actix_web::http::StatusCode as ActixStatusCode;
+        let code = self.internal_code.code;
+        let actix_code = ActixStatusCode::from_u16(code as u16).unwrap_or(ActixStatusCode::INTERNAL_SERVER_ERROR);
+        actix_web::web::Json(self).customize().with_status(actix_code)
     }
     #[deprecated(note = "Make a custom response function, don't use this")]
     pub fn custom(meta: Metadata, status_code: StatusCode) -> Self {

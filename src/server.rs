@@ -107,11 +107,7 @@ async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
         },
         "POLL" => {
             let metadata = Metadata::from(&info.0);
-            if metadata.status_is_unknown() {
-                Response::poll_id_doesnt_exist(info.0.deploy_identifier, metadata)
-            } else {
-                Response::success(metadata, None)
-            }.wrap()
+            Response::success(metadata, None).wrap()
         },
         "MODIFY_META" => {
             let meta = Metadata::from(&info.0);

@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use actix_web::web::Json;
+use actix_web::{Responder, CustomizeResponder};
 use arcs_deploy_docker::{ build_image, delete_image as delete_docker_image, push_image, pull_image };
 use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge, get_chall_folder};
 
@@ -301,13 +303,14 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
     ))
 }
 
-pub async fn update_yaml(chall_folder_name: &str, modifications: Modifications, meta: &Metadata) -> Result<YamlShape, actix_web::web::Json<Response>> {
+pub async fn update_yaml(chall_folder_name: &str, modifications: Modifications, meta: &Metadata) -> Result<YamlShape, CustomizeResponder<Json<Response>>> {
     let meta = meta.clone();
 
     ensure_repo_up_to_date(Path::new(chall_folder_default()), &meta).map_err(Response::wrap)?;
+    trace!("Repo up to date");
 
-    debug!("{chall_folder_name}");
     let new_yaml = update_yaml_file(chall_folder_name, modifications, &meta).await.map_err(Response::wrap)?;
+    debug!("{chall_folder_name}");
 
     let yaml_location_relative = std::path::PathBuf::from_iter([chall_folder_name, "chall.yaml"].into_iter());
     make_repo_commit(Path::new(chall_folder_default()), &yaml_location_relative, &meta).map_err(Response::wrap)?;

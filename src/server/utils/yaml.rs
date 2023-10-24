@@ -13,13 +13,13 @@ pub async fn update_yaml_file(chall_folder_name: &str, modifications: Modificati
 
     let yaml_location = chall_yaml_path(chall_folder_name);
     let Ok(old_yaml) = read_to_string(&yaml_location).await else {
+        error!("Failed to read chall.yaml for {} @ {:?}", meta.chall_name(), yaml_location);
         return Err(Response::chall_doesnt_exist(chall_folder_name, meta));
     };
 
-    debug!("{old_yaml}");
     if let Some(new_yaml) = modifications.apply(&old_yaml) {
-        debug!("{new_yaml}");
         if new_yaml == old_yaml {
+            warn!("Yaml unchanged by modifications");
             return Err(Response::modifications_failed(meta));
         }
     }
