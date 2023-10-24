@@ -5,6 +5,7 @@ pub struct Locations {
     pub description: (usize, usize),
     pub categories: (usize, usize),
     pub tags: Option<(usize, usize)>,
+    pub visible: (usize, usize),
 }
 
 impl Locations {
@@ -16,6 +17,7 @@ impl Locations {
         let description = Self::get_span_of_entry(&yaml, yaml_str, "description")?;
         let categories = Self::get_span_of_entry(&yaml, yaml_str, "categories")?;
         let tags = Self::get_span_of_entry(&yaml, yaml_str, "tags");
+        let visible = Self::get_span_of_entry(&yaml, yaml_str, "visible")?;
 
         Some(Locations {
             points,
@@ -23,6 +25,7 @@ impl Locations {
             description,
             categories,
             tags,
+            visible,
         })
     }
 

@@ -10,6 +10,7 @@ pub struct Modifications {
     points: Option<u64>,
     categories: Option<Vec<String>>,
     tags: Option<Option<Vec<String>>>,
+    visible: Option<bool>,
 }
 
 impl Modifications {
@@ -34,6 +35,10 @@ impl Modifications {
 
         if let Some(tags) = &self.tags {
             yaml = try_replace_tags(&yaml, tags.as_ref().map(Vec::as_slice).unwrap_or(&[]))?;
+        }
+
+        if let Some(visibility) = &self.visible {
+            yaml = try_replace_visible(&yaml, *visibility)?;
         }
 
         Some(yaml)

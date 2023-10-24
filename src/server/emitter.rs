@@ -343,6 +343,7 @@ pub async fn sync_metadata_with_webhook(meta: &Metadata, new_yaml: YamlShape) ->
         "points": &new_yaml.points(),
         "categories": &new_yaml.category_str_iter().collect::<Vec<&str>>(),
         "tags": [], // TODO --> add tags in YamlShape
+        "visible": new_yaml.visible(),
     });
     let jsonbody = json!({
         "sql": sql_payload,
@@ -384,5 +385,3 @@ pub async fn sync_metadata_with_webhook(meta: &Metadata, new_yaml: YamlShape) ->
         }
     }
 }
-
-

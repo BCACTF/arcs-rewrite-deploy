@@ -85,6 +85,8 @@ pub fn try_replace_tags<T: ToOwned<Owned = String>>(yaml_str: &str, new_tags: &[
     }
 }
 
+pub fn try_replace_visible(yaml_str: &str, visible: bool) -> Option<String> {
+    let locations = Locations::try_find(yaml_str)?;
 
-
-
+    try_replace(yaml_str, "visible", Yaml::Boolean(visible), locations.visible)
+}
