@@ -16,7 +16,7 @@ use serde_json::json;
 
 use crate::emitter::send_deployment_success;
 use crate::server::utils::errors::DeployProcessErr;
-use crate::server::utils::git::{make_repo_commit, ensure_repo_up_to_date};
+use crate::server::utils::git::{ensure_repo_up_to_date, make_commit, push_all};
 use crate::logging::*;
 use crate::polling::{ PollingId, register_chall_deployment, fail_deployment, succeed_deployment };
 use crate::server::utils::state_management::{send_failure_message, advance_with_fail_log};
@@ -306,14 +306,22 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
 pub async fn update_yaml(chall_folder_name: &str, modifications: Modifications, meta: &Metadata) -> Result<YamlShape, CustomizeResponder<Json<Response>>> {
     let meta = meta.clone();
 
-    ensure_repo_up_to_date(Path::new(chall_folder_default()), &meta).map_err(Response::wrap)?;
+    let repo_path = Path::new(chall_folder_default());
+
+    let should_push = ensure_repo_up_to_date(repo_path, &meta).map_err(Response::wrap)?;
     trace!("Repo up to date");
 
     let new_yaml = update_yaml_file(chall_folder_name, modifications, &meta).await.map_err(Response::wrap)?;
     debug!("{chall_folder_name}");
 
+    let message = format!("ADMIN_PANEL_MANAGEMENT: updated chall.yaml for challenge `{chall_folder_name}`");
+    
     let yaml_location_relative = std::path::PathBuf::from_iter([chall_folder_name, "chall.yaml"].into_iter());
-    make_repo_commit(Path::new(chall_folder_default()), &yaml_location_relative, &meta).map_err(Response::wrap)?;
+    
+    make_commit(repo_path, &[&yaml_location_relative], &message, &meta).map_err(Response::wrap)?;
+    if should_push {
+        push_all(repo_path, &meta).map_err(Response::wrap)?;
+    }
 
     Ok(new_yaml)
 }

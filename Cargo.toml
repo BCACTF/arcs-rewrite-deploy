@@ -33,6 +33,7 @@ constant_time_eq = "0.2.5"
 actix-web-httpauth = "0.8.0"
 arcs-logging-rs = "0.1.2"
 git2 = { version = "0.18.1", features = ["vendored-libgit2", "vendored-openssl"] }
+either = "1.9.0"
 
 [build-dependencies]
 walkdir = "2.3.2"

@@ -20,7 +20,7 @@ pub async fn update_yaml_file(chall_folder_name: &str, modifications: Modificati
     if let Some(new_yaml) = modifications.apply(&old_yaml) {
         if new_yaml == old_yaml {
             warn!("Yaml unchanged by modifications");
-            return Err(Response::modifications_failed(meta));
+            // return Err(Response::modifications_failed(meta));
         }
     }
 
