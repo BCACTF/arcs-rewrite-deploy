@@ -15,7 +15,7 @@ shiplift = { git = "https://github.com/fortanix/shiplift", branch = "master" }
 tar = "0.4.38"
 
 arcs-logging-rs = "0.1.2"
-arcs-deploy-env = { version = "0.1.0", path = "../arcs-deploy-env" }
+arcs-env-rs = "0.2.0"
 arcs-yaml-parser = { version = "0.1.0", path = "../arcs-yaml" }
 arcs-deploy-docker = { version = "0.1.0", path = "../arcs-deploy-docker" }
 

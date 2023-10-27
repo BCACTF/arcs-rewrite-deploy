@@ -1,4 +1,4 @@
-use arcs_deploy_env::*;
+use arcs_env_rs::*;
 
 env_var_req!(S3_BEARER_TOKEN);
 env_var_req!(S3_ACCESS_KEY);

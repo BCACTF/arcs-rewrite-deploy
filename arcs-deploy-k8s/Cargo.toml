@@ -15,7 +15,7 @@ kube = "0.82.0"
 futures = "0.3.23"
 
 arcs-logging-rs = "0.1.2"
-arcs-deploy-env = { version = "0.1.0", path = "../arcs-deploy-env" }
+arcs-env-rs = "0.2.0"
 
 serde_json="1.0.85"
 dotenv = "0.15.0"

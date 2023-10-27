@@ -1,8 +1,10 @@
-use arcs_deploy_env::*;
+use arcs_env_rs::*;
 
-env_var_req!(DEPLOY_SERVER_AUTH_TOKEN -> DEPLOY_TOKEN);
 env_var_req!(PORT);
+
 env_var_req!(WEBHOOK_SERVER_AUTH_TOKEN -> WEBHOOK_TOKEN);
+env_var_req!(DEPLOY_SERVER_AUTH_TOKEN -> DEPLOY_TOKEN);
+
 env_var_req!(WEBHOOK_SERVER_ADDRESS -> WEBHOOK_ADDRESS);
 env_var_req!(DEPLOY_SERVER_ADDRESS -> DEPLOY_ADDRESS);
 env_var_req!(S3_BUCKET_URL -> S3_ADDRESS);

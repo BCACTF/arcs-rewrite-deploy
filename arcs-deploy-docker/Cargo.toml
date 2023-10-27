@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 # ARCS dependencies
 arcs-logging-rs = "0.1.2"
-arcs-deploy-env = { version = "0.1.0", path = "../arcs-deploy-env" }
+arcs-env-rs = "0.2.0"
 
 # Docker-related
 shiplift = { git = "https://github.com/fortanix/shiplift", branch = "master" }
