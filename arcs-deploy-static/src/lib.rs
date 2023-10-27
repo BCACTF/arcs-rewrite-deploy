@@ -1,5 +1,5 @@
 use std::io::Read;
-use std::{path::PathBuf, fs::read_to_string};
+use std::path::PathBuf;
 
 use arcs_deploy_docker::fetch_container_file;
 
@@ -26,10 +26,12 @@ pub fn chall_yaml_path(chall_folder_name: &str) -> PathBuf {
     folder_path.join("chall.yaml")
 }
 
-pub fn fetch_chall_yaml(chall_folder_name: &str) -> Option<Result<YamlShape, YamlVerifyError>> {
+pub async fn fetch_chall_yaml(chall_folder_name: &str) -> Option<Result<YamlShape, YamlVerifyError>> {
+    use tokio::fs::read_to_string;
+
     let yaml_path = chall_yaml_path(chall_folder_name);
     let folder_path = yaml_path.parent()?;
-    let yaml_data = read_to_string(&yaml_path).ok()?;
+    let yaml_data = read_to_string(&yaml_path).await.ok()?;
 
     Some(YamlShape::try_from_str(&yaml_data, &Default::default(), Some(&folder_path)))
 }
@@ -115,7 +117,7 @@ pub async fn deploy_static_files(docker: &Docker, chall_name: &str) -> Result<Ve
         }
     };
 
-    let yaml = match fetch_chall_yaml(chall_name) {
+    let yaml = match fetch_chall_yaml(chall_name).await {
         Some(yaml_result) => {
                 match yaml_result {
                     Ok(yaml) => yaml,

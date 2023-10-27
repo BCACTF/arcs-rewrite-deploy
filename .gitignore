@@ -8,3 +8,6 @@
 .required_envs_conglomerate
 arcs-yaml-verifier/test.yaml
 **/test.sh
+
+src/server/utils/api_types/*
+!src/server/utils/api_types/mod.rs

@@ -35,7 +35,7 @@ pub async fn update_yaml_file(chall_folder_name: &str, modifications: Modificati
         },
     };
 
-    let new_yaml = match fetch_chall_yaml(chall_folder_name) {
+    let new_yaml = match fetch_chall_yaml(chall_folder_name).await {
         Some(Ok(new_yaml)) => new_yaml,
         Some(Err(e)) => {
             debug!("Yaml error: {e}");
@@ -69,7 +69,7 @@ pub async fn handle_yaml_get(meta: &Metadata) -> Option<YamlShape> {
     let meta = meta.clone();
     let polling_id = meta.poll_id();
 
-    let chall_yaml = fetch_chall_yaml(meta.chall_name().as_str());
+    let chall_yaml = fetch_chall_yaml(meta.chall_name().as_str()).await;
 
     if let Some(chall_yaml) = chall_yaml {
         match chall_yaml {

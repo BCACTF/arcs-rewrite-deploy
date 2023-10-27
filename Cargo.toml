@@ -33,10 +33,16 @@ actix-web-httpauth = "0.8.0"
 arcs-logging-rs = "0.1.2"
 git2 = { version = "0.18.1", features = ["vendored-libgit2", "vendored-openssl"] }
 either = "1.9.0"
-arcs-env-rs = "0.2.0"
+arcs-env-rs = "0.2.1"
 
 [build-dependencies]
-walkdir = "2.3.2"
+dotenv = "0.15.0"
+prettyplease = "0.2.15"
+reqwest = { version = "0.11.15", features = ["blocking"] }
+schemars = { version = "0.8.15", features = ["uuid", "uuid1", "chrono"] }
+serde_json = "1.0.94"
+syn = "2.0.38"
+typify = "0.0.14"
 
 [profile.dev]
 split-debuginfo = "unpacked"
