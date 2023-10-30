@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use actix_web::web::Json;
-use actix_web::{Responder, CustomizeResponder};
+use actix_web::CustomizeResponder;
 use arcs_deploy_docker::{ build_image, delete_image as delete_docker_image, push_image, pull_image };
 use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge, get_chall_folder};
 

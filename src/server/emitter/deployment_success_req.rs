@@ -107,7 +107,7 @@ async fn handle_deployment_success(
             };
 
             let Some(FromDiscordResult::Ok(_)) = response.disc else {
-                error!("Expected a successful result from the SQL server, but got none or a bad result");
+                error!("Expected a successful result from Discord, but got none or a bad result");
                 return Err("Discord returned an undexpected result".to_string());
             };
 

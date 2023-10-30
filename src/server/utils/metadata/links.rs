@@ -65,3 +65,53 @@ pub fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<Vec<St
     info!("STATIC FILE LINKS: {:?}", static_file_links);
     Ok(static_file_links)
 }
+
+
+
+use arcs_yaml_parser::deploy::structs::{
+    DeployLink,
+    DeployTargetType,
+};
+
+use crate::server::utils::api_types::incoming::{
+    Link as WebhookLink,
+    LinkType as WebhookLinkType,
+};
+
+pub fn static_links_to_deploy_links(links: Vec<String>) -> Vec<DeployLink> {
+    links
+        .into_iter()
+        .map(|link| DeployLink {
+            link,
+            deploy_target: DeployTargetType::Static,
+        })
+        .collect()
+}
+
+
+
+use super::container_links::links_from_port_listing;
+
+pub fn into_webhook_links(links: Vec<DeployLink>) -> Vec<WebhookLink> {
+    links
+        .into_iter()
+        .map(|link| {
+            WebhookLink {
+                location: link.link.clone(),
+                type_: match link.deploy_target {
+                    DeployTargetType::Static => WebhookLinkType::Static,
+                    DeployTargetType::Nc => WebhookLinkType::Nc,
+                    DeployTargetType::Admin => WebhookLinkType::Admin,
+                    DeployTargetType::Web => WebhookLinkType::Web,
+                },
+            }
+        })
+        .collect()
+}
+
+pub fn get_all_links(meta: &Metadata, yaml: &YamlShape, ports: &Option<Vec<(DeployTargetType, Vec<i32>)>>) -> Result<Vec<DeployLink>, String> {
+    let mut links = static_links_to_deploy_links(get_static_file_links(meta, yaml)?);
+    links.extend(links_from_port_listing(ports));
+
+    Ok(links)
+}

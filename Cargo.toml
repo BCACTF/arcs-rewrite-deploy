@@ -50,7 +50,7 @@ split-debuginfo = "unpacked"
 
 [profile.release-overoptimized]
 inherits = "release"
-codegen-units = 1
+# codegen-units = 1
 lto = "fat"
 opt-level = 3
 debug = true
