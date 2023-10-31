@@ -66,9 +66,8 @@ async fn handle_metadata_update(
 
     match response.json::<Outgoing>().await {
         Ok(response) => {
-            type FromSqlResult = ResultOfFromSqlOrFromSqlErr;
 
-            let Some(FromSqlResult::Ok(FromSql::Chall(chall))) = response.sqll else {
+            let Some(SqlResult::Success(FromSql::Chall(chall))) = response.sql else {
                 error!("Expected an updated challenge from the SQL server, but got none, a bad result, or non-chall sync result");
                 return Err("SQL server returned an unexpected response".to_string());
             };

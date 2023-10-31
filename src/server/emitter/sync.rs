@@ -49,9 +49,13 @@ async fn handle_frontend_sync(
 
     match response.json::<Outgoing>().await {
         Ok(response) => {
-            type FromFrontendResult = ResultOfFromFrontendOrFromFrontendErr;
+            use {
+                FrontendResult::Success,
+                FromFrontend::Synced,
+                SyncType::Chall,
+            };
 
-            let Some(FromFrontendResult::Ok(FromFrontend::Synced(SyncType::Chall(chall_id)))) = response.fron else {
+            let Some(Success(Synced(Chall(chall_id)))) = response.frontend else {
                 error!("Expected a chall id sync result from the Frontend server, but got none, a bad result, or non-chall id sync result");
                 return Err("Frontend returned an unexpected response".to_string());
             };

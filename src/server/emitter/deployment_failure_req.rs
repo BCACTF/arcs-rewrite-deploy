@@ -58,9 +58,8 @@ async fn handle_deployment_failure(
 
     match response.json::<Outgoing>().await {
         Ok(response) => {
-            type FromDiscordResult = ResultOfFromDiscordOrFromDiscordErr;
 
-            let Some(FromDiscordResult::Ok(_)) = response.disc else {
+            let Some(DiscordResult::Success(_)) = response.discord else {
                 error!("Expected a successful result from Discord, but got none or a bad result");
                 return Err("Discord returned an undexpected result".to_string());
             };

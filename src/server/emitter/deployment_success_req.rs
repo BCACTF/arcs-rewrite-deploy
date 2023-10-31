@@ -94,10 +94,13 @@ async fn handle_deployment_success(
 
     match response.json::<Outgoing>().await {
         Ok(response) => {
-            type FromSqlResult = ResultOfFromSqlOrFromSqlErr;
-            type FromDiscordResult = ResultOfFromDiscordOrFromDiscordErr;
+            use {
+                SqlResult::Success,
+                FromSql::Chall,
+                DiscordResult::Success as DiscSuccess,
+            };
 
-            let Some(FromSqlResult::Ok(FromSql::Chall(chall))) = response.sqll else {
+            let Some(Success(Chall(chall))) = response.sql else {
                 error!("Expected a challenge result from the SQL server, but got none, a bad result, or non-challenge result");
                 return Err("SQL server returned an unexpected response".to_string());
             };
@@ -106,7 +109,7 @@ async fn handle_deployment_success(
                 return Err("SQL server returned a challenge with a different ID than the poll ID".to_string());
             };
 
-            let Some(FromDiscordResult::Ok(_)) = response.disc else {
+            let Some(DiscSuccess(_)) = response.discord else {
                 error!("Expected a successful result from Discord, but got none or a bad result");
                 return Err("Discord returned an undexpected result".to_string());
             };
