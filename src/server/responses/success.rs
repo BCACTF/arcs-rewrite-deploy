@@ -59,7 +59,7 @@ impl Response {
         let chall_name = Some(meta.chall_name().to_string());
         let poll_id = meta.poll_id();
         Self(
-            StatusCode::CONFLICT,
+            StatusCode::SUCCESS,
             FromDeploy::Status(DeploymentStatus {
                 chall_name,
                 poll_id,
