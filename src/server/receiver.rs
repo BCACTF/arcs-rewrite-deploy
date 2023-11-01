@@ -1,28 +1,31 @@
 use std::path::Path;
 
-use actix_web::web::Json;
-use actix_web::CustomizeResponder;
 use arcs_deploy_docker::{ build_image, delete_image as delete_docker_image, push_image, pull_image };
-use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge, get_chall_folder};
+use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge, get_chall_folder };
+use arcs_deploy_static::deploy_static_files;
 
 use arcs_deploy_static::env::chall_folder_default;
 use arcs_yaml_editor::Modifications;
-use arcs_yaml_parser::deploy::structs::{DeployTarget, DeployTargetType};
-use arcs_yaml_parser::YamlShape;
+use arcs_yaml_parser::{
+    deploy::structs::{DeployTarget, DeployTargetType},
+    YamlShape
+};
+
+
 use kube::Client;
 use shiplift::Docker;
 use super::responses::{ Metadata, Response };
-use serde_json::json;
 
+use crate::server::utils::{
+    errors::DeployProcessErr,
+    git::{ ensure_repo_up_to_date, make_commit, push_all },
+    state_management::{ advance_with_fail_log, send_failure_message },
+    yaml::{ update_yaml_file, handle_yaml_get },
+};
 use crate::emitter::send_deployment_success;
-use crate::server::utils::errors::DeployProcessErr;
-use crate::server::utils::git::{ensure_repo_up_to_date, make_commit, push_all};
 use crate::logging::*;
 use crate::polling::{ PollingId, register_chall_deployment, fail_deployment, succeed_deployment };
-use crate::server::utils::state_management::{send_failure_message, advance_with_fail_log};
-use crate::server::utils::yaml::{update_yaml_file, handle_yaml_get};
 
-use arcs_deploy_static::deploy_static_files;
 
 #[derive(Debug, Clone)]
 pub struct BuildChallengeErr(String);
@@ -103,7 +106,7 @@ pub async fn delete_challenge(docker: &Docker, client: &Client, meta: Metadata) 
         Err(e) => {
             error!("Error deleting {} from Kubernetes cluster", name);
             error!("Trace: {}", e);
-            return Response::k8s_service_deploy_del_err(e, meta); 
+            return Response::err_k8s_del(meta, e); 
         } 
     };
     // TODO --> add delete docker container so things delete properly
@@ -118,13 +121,12 @@ pub async fn delete_challenge(docker: &Docker, client: &Client, meta: Metadata) 
         },
         Err(e) => {
             error!("Error deleting {} from Docker: {e:?}", name);
-            return Response::docker_img_del_err(e, meta);
+            return Response::err_docker_del(meta, e);
         } 
     };
 
     debug!("Deleted '{name}'");
-    let name = name.clone();
-    Response::success(meta, Some(json!({ "chall_name": name })))
+    Response::success_remove(meta)
 }
 
 
@@ -240,7 +242,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
 
     if let Err(status) = register_chall_deployment(polling_id) {
         if !status.is_finished() {
-            return Err(Response::poll_id_already_in_use(polling_id, status, meta));
+            return Err(Response::poll_id_in_use(meta, polling_id, status));
         }
         let failed_to_update_poll_id = crate::polling::_update_deployment_state(
             polling_id,
@@ -250,7 +252,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
             ),
         ).is_err();
         if failed_to_update_poll_id {
-            return Err(Response::ise("Failed to update deployment state", meta));
+            return Err(Response::unknown_ise(meta, "Failed to update deployment state"));
         }
     }
 
@@ -290,37 +292,27 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
     use std::time::{ SystemTime, UNIX_EPOCH };
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|duration| duration.as_millis());
 
-    Ok(Response::success(
-        meta,
-        Some(json!({
-            "status": "STARTED",
-            "status_time": 0,
-            "chall_id": polling_id,
-            "data": {
-                "timestamp": timestamp,
-            },
-        })),
-    ))
+    Ok(Response::success_deploy_start(meta))
 }
 
-pub async fn update_yaml(chall_folder_name: &str, modifications: Modifications, meta: &Metadata) -> Result<YamlShape, CustomizeResponder<Json<Response>>> {
+pub async fn update_yaml(chall_folder_name: &str, modifications: Modifications, meta: &Metadata) -> Result<YamlShape, Response> {
     let meta = meta.clone();
 
     let repo_path = Path::new(chall_folder_default());
 
-    let should_push = ensure_repo_up_to_date(repo_path, &meta).map_err(Response::wrap)?;
+    let should_push = ensure_repo_up_to_date(repo_path, &meta)?;
     trace!("Repo up to date");
 
-    let new_yaml = update_yaml_file(chall_folder_name, modifications, &meta).await.map_err(Response::wrap)?;
+    let new_yaml = update_yaml_file(chall_folder_name, modifications, &meta).await?;
     debug!("{chall_folder_name}");
 
     let message = format!("ADMIN_PANEL_MANAGEMENT: updated chall.yaml for challenge `{chall_folder_name}`");
     
     let yaml_location_relative = std::path::PathBuf::from_iter([chall_folder_name, "chall.yaml"].into_iter());
     
-    make_commit(repo_path, &[&yaml_location_relative], &message, &meta).map_err(Response::wrap)?;
+    make_commit(repo_path, &[&yaml_location_relative], &message, &meta)?;
     if should_push {
-        push_all(repo_path, &meta).map_err(Response::wrap)?;
+        push_all(repo_path, &meta)?;
     }
 
     Ok(new_yaml)

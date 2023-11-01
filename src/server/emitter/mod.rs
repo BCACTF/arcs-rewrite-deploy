@@ -76,7 +76,7 @@ pub async fn sync_metadata_with_webhook(meta: &Metadata, new_yaml: YamlShape) ->
 
     // reqwest client for contacting the webhook server
     match meta::metadata_update_message(&client, meta, &new_yaml).await {
-        Ok(_) => Response::success(meta.clone(), None),
-        Err(e) => Response::ise(&e, meta.clone()),
+        Ok(_) => Response::success_modify_meta(meta.clone(), new_yaml),
+        Err(e) => Response::unknown_ise(meta.clone(), &e),
     }
 }

@@ -26,7 +26,7 @@ fn get_branch_refspec(repo: &Repository, meta: &Metadata) -> Result<String, Resp
     // Push commit to remote
     let Ok(branch) = repo.find_branch(git_branch(), git2::BranchType::Local) else {
         error!("Failed to find local branch {}", git_branch());
-        return Err(Response::ise(&format!("Failed to find local branch {}", git_branch()), meta.clone()));
+        return Err(Response::git_err(meta.clone(), &format!("Failed to find local branch {}", git_branch())));
     };
     let branch_ref = branch.into_reference();
 
@@ -44,14 +44,14 @@ pub fn ensure_repo_up_to_date(repo_path: &Path, meta: &Metadata) -> Result<bool,
 
     let Ok(repo) = Repository::open(repo_path) else {
         error!("Failed to open repository");
-        return Err(Response::ise("Failed to open repository", meta));
+        return Err(Response::git_err(meta, "Failed to open repository"));
     };
     trace!("Opened repository");
 
 
     let Ok(commit_oid_opt) = prepare_repo_commit_all(&repo) else {
         error!("Failed to commit all unstaged changes");
-        return Err(Response::ise("Failed to commit all unstaged changes", meta));
+        return Err(Response::git_err(meta, "Failed to commit all unstaged changes"));
     };
     match commit_oid_opt {
         Some(commit_oid) => debug!("Commit OID: {commit_oid}"),
@@ -61,7 +61,7 @@ pub fn ensure_repo_up_to_date(repo_path: &Path, meta: &Metadata) -> Result<bool,
 
     let Ok(saved_ref_log) = prep::get_ref_log_save(&repo) else {
         error!("Failed to get ref log object for rollback");
-        return Err(Response::ise("Failed to get ref log object for rollback", meta));
+        return Err(Response::git_err(meta, "Failed to get ref log object for rollback"));
     };
     trace!("Saved ref log for rollback");
 
@@ -69,7 +69,7 @@ pub fn ensure_repo_up_to_date(repo_path: &Path, meta: &Metadata) -> Result<bool,
     let could_connect = if let Some(mut remote) = remote::try_get_connected_remote(&repo).unwrap() {
         if let Err(e) = fetch::fetch_from_remote(&mut remote) {
             error!("Failed to fetch from remote: {e:?}");
-            return Err(Response::ise(&format!("Failed to fetch from remote: {e:?}"), meta));
+            return Err(Response::git_err(meta, &format!("Failed to fetch from remote: {e:?}")));
         }
         trace!("Successfully fetched new remote commits");
 
@@ -81,18 +81,18 @@ pub fn ensure_repo_up_to_date(repo_path: &Path, meta: &Metadata) -> Result<bool,
                 trace!("Failed to merge (unresolved conflicts)");
                 if let Err(e) = prep::hard_reset_to_ref_log(&repo, saved_ref_log) {
                     error!("Failed to hard reset to ref log: {e:?}");
-                    return Err(Response::ise(&format!("Failed to hard reset to ref log: {e:?}"), meta));
+                    return Err(Response::git_err(meta, &format!("Failed to hard reset to ref log: {e:?}")));
                 }
 
-                return Err(Response::success(meta, Some(serde_json::json!{{ "applied": false }})));
+                return Err(Response::git_err(meta, "Failed to merge fetched commits: unresolved conflicts"));
             },
             Err(e) => {
                 error!("Failed to merge fetched commits: {e:?}");
                 if let Err(e) = prep::hard_reset_to_ref_log(&repo, saved_ref_log) {
                     error!("Failed to hard reset to ref log: {e:?}");
-                    return Err(Response::ise(&format!("Failed to merge fetched commits: {e:?}.\nWhile rolling back, encountered an error: {e:?}"), meta));
+                    return Err(Response::git_err(meta, &format!("Failed to merge fetched commits: {e:?}.\nWhile rolling back, encountered an error: {e:?}")));
                 } else {
-                    return Err(Response::ise(&format!("Failed to merge fetched commits: {e:?}"), meta));
+                    return Err(Response::git_err(meta, &format!("Failed to merge fetched commits: {e:?}")));
                 }
             },
         }

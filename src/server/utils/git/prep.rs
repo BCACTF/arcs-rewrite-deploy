@@ -41,13 +41,13 @@ pub fn make_commit(repo_path: &Path, files_to_add: &[&Path], message: &str, meta
 
     let Ok(repo) = Repository::open(repo_path) else {
         error!("Failed to open repository");
-        return Err(Response::ise("Failed to open repository", meta));
+        return Err(Response::git_err(meta, "Failed to open repository"));
     };
     trace!("Opened repository");
 
     if let Err(e) = new_commit_from_files(&repo, files_to_add, message) {
         error!("Failed to commit files: {}", e);
-        Err(Response::ise(&format!("Failed to commit files: {}", e), meta))
+        Err(Response::git_err(meta, &format!("Failed to commit files: {}", e)))
     } else {
         Ok(())
     }
@@ -58,7 +58,7 @@ pub fn push_all(repo_path: &Path, meta: &Metadata) -> Result<(), Response> {
 
     let Ok(repo) = Repository::open(repo_path) else {
         error!("Failed to open repository");
-        return Err(Response::ise("Failed to open repository", meta));
+        return Err(Response::git_err(meta, "Failed to open repository"));
     };
     trace!("Opened repository");
 
@@ -66,13 +66,13 @@ pub fn push_all(repo_path: &Path, meta: &Metadata) -> Result<(), Response> {
     // Push commit to remote
     let Ok(mut remote) = get_remote(&repo) else {
         error!("Failed to get remote");
-        return Err(Response::ise("Failed to get remote", meta));
+        return Err(Response::git_err(meta, "Failed to get remote"));
     };
     let branch_refspec = get_branch_refspec(&repo, &meta)?;
 
     if let Err(e) = remote.push::<&str>(&[&branch_refspec], Some(PushOptions::new().remote_callbacks(get_auth_callbacks()))) {
         error!("Failed to push to remote: {e:?}");
-        Err(Response::ise(&format!("Failed to push to remote: {e:?}"), meta))
+        Err(Response::git_err(meta, &format!("Failed to push to remote: {e:?}")))
     } else {
         Ok(())
     }

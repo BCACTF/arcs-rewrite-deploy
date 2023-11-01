@@ -56,12 +56,12 @@ pub struct Deploy {
 async fn generate_clients(meta: Metadata) -> Result<(Docker, Client), Response> {
     let docker: Docker = match docker_login().await {
         Ok(docker) => docker,
-        Err(err) => return Err(Response::docker_login_err(&err, meta)),
+        Err(err) => return Err(Response::err_docker_login(meta, &err)),
     };
     
     let k8s : Client = match create_client().await {
         Ok(client) => client,
-        Err(err) => return Err(Response::k8s_login_err(&err, meta)),
+        Err(err) => return Err(Response::err_k8s_login(meta, &err)),
     };
 
     Ok((docker, k8s))
@@ -107,7 +107,9 @@ async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
         },
         "POLL" => {
             let metadata = Metadata::from(&info.0);
-            Response::success(metadata, None).wrap()
+            let status = metadata.status().clone();
+
+            Response::success_deploy_poll(metadata, status).wrap()
         },
         "MODIFY_META" => {
             let meta = Metadata::from(&info.0);
@@ -122,7 +124,7 @@ async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
 
             let new_yaml = match update_yaml(meta.chall_name(), modifications, &meta).await {
                 Ok(new_yaml) => new_yaml,
-                Err(resp) => return resp,
+                Err(resp) => return resp.wrap(),
             };
 
             trace!("YAML updated correctly, moving on to webhook sync");
@@ -131,7 +133,7 @@ async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
         }
         _ => {
             warn!("Endpoint {} not implemented on deploy server", info.__type);
-            Response::endpoint_err(&info.__type, meta).wrap()
+            Response::endpoint_doesnt_exist_err(meta, &info.__type).wrap()
         },
     }
 }

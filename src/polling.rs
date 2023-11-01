@@ -200,10 +200,7 @@ pub struct PollInfo {
 
 impl From<(PollInfo, Metadata)> for Response {
     fn from((info, meta): (PollInfo, Metadata)) -> Self {
-        match serde_json::to_value(info) {
-            Ok(val) => Response::success(meta, Some(val)),
-            Err(e) => Response::ise(&e.to_string(), meta),
-        }
+        Response::success_deploy_poll(meta, info.status)
     }
 }
 

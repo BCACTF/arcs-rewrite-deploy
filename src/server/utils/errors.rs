@@ -35,46 +35,46 @@ impl std::fmt::Display for DeployProcessErr {
     }
 }
 
-impl From<(DeployProcessErr, Metadata)> for Response {
-    fn from((err, meta): (DeployProcessErr, Metadata)) -> Self {
-        use DeployProcessErr::*;
-        match err {
-            FileUpload(files) => Response::server_deploy_process_err(
-                0,
-                "Error uploading file(s) to CDN",
-                Some(json!({ "files": files })),
-                meta,
-            ),
-            Build(s) => Response::server_deploy_process_err(
-                1,
-                "Error building docker image",
-                Some(json!({ "reason": s })),
-                meta,
-            ),
-            Push(s) => Response::server_deploy_process_err(
-                2,
-                "Error pushing to registry",
-                Some(json!({ "reason": s })),
-                meta,
-            ),
-            Pull(s) => Response::server_deploy_process_err(
-                3,
-                "Error pulling from registry",
-                Some(json!({ "reason": s })),
-                meta,
-            ),
-            Fetch(s) => Response::server_deploy_process_err(
-                4,
-                "Error fetching challenge folder",
-                Some(json!({ "reason": s })),
-                meta,
-            ),
-            Deploy(s) => Response::server_deploy_process_err(
-                5,
-                "Error deploying to Kubernetes",
-                Some(json!({ "reason": s })),
-                meta,
-            ),
-        }
-    }
-}
+// impl From<(DeployProcessErr, Metadata)> for Response {
+//     fn from((err, meta): (DeployProcessErr, Metadata)) -> Self {
+//         use DeployProcessErr::*;
+//         match err {
+//             FileUpload(files) => Response::server_deploy_process_err(
+//                 0,
+//                 "Error uploading file(s) to CDN",
+//                 Some(json!({ "files": files })),
+//                 meta,
+//             ),
+//             Build(s) => Response::server_deploy_process_err(
+//                 1,
+//                 "Error building docker image",
+//                 Some(json!({ "reason": s })),
+//                 meta,
+//             ),
+//             Push(s) => Response::server_deploy_process_err(
+//                 2,
+//                 "Error pushing to registry",
+//                 Some(json!({ "reason": s })),
+//                 meta,
+//             ),
+//             Pull(s) => Response::server_deploy_process_err(
+//                 3,
+//                 "Error pulling from registry",
+//                 Some(json!({ "reason": s })),
+//                 meta,
+//             ),
+//             Fetch(s) => Response::server_deploy_process_err(
+//                 4,
+//                 "Error fetching challenge folder",
+//                 Some(json!({ "reason": s })),
+//                 meta,
+//             ),
+//             Deploy(s) => Response::server_deploy_process_err(
+//                 5,
+//                 "Error deploying to Kubernetes",
+//                 Some(json!({ "reason": s })),
+//                 meta,
+//             ),
+//         }
+//     }
+// }
