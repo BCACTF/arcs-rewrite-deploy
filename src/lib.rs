@@ -11,6 +11,7 @@ use server::initialize_server;
 #[allow(unused_macros)]
 pub mod logging {
     use arcs_logging_rs::with_target;
+    // use arcs_logging as arcs_logging_rs;
     with_target! { "arcs-deploy" }
 }
 

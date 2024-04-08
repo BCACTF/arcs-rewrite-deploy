@@ -8,45 +8,108 @@ edition = "2021"
 [dependencies]
 reqwest = { version = "0.11.15", features=["json"] }
 actix-web = "4.2.1"
+
 tokio = { version = "1.20.1", features = ["full"] }
 uuid = { version = "1.3.0", features=["serde"] }
 serde = { version = "1.0.152", features = ["derive"] }
 
 
-
-arcs-deploy-docker = { version = "0.1.0", path = "./arcs-deploy-docker" }
-arcs-deploy-k8s = { version = "0.1.0", path = "./arcs-deploy-k8s" }
-arcs-deploy-static = { version = "0.1.0", path="./arcs-deploy-static" }
-arcs-yaml-parser = { package = "arcs-ctf_yaml-parser", version = "0.1.0", path = "./arcs-yaml" }
-arcs-yaml-editor = { version = "0.1.0", path = "./arcs-yaml-editor" }
-
-
 shiplift = { git = "https://github.com/fortanix/shiplift", branch = "master" }
-dotenv = "0.15.0"
 kube = "0.82.0"
+
+dotenvy = "0.15"
 chashmap = "2.2.2"
 lazy_static = "1.4.0"
 const_format = "0.2.30"
 serde_json = "1.0.94"
 constant_time_eq = "0.2.5"
 actix-web-httpauth = "0.8.0"
-arcs-logging-rs = "0.1.2"
-git2 = { version = "0.18.1", features = ["vendored-libgit2", "vendored-openssl"] }
+git2 = { version = "0.18.1", features = [] }
 either = "1.9.0"
-arcs-env-rs = "0.2.1"
 
-[build-dependencies]
-dotenv = "0.15.0"
-prettyplease = "0.2.15"
-reqwest = { version = "0.11.15", features = ["blocking"] }
-schemars = { version = "0.8.15", features = ["uuid", "uuid1", "chrono"] }
-serde_json = "1.0.94"
-syn = "2.0.38"
-typify = "0.0.14"
+[dependencies.arcs_env]
+package = "arcs-env-rs"
+version = "0.2"
+
+[dependencies.arcs_logging_rs]
+package = "arcs-logging-rs"
+version = "0.1"
+
+# Docker container management
+[dependencies.arcs_docker]
+path = "./arcs-deploy-docker"
+package = "arcs-deploy-docker"
+
+# K8S cluster management
+[dependencies.arcs_k8s]
+path = "./arcs-deploy-k8s"
+package = "arcs-deploy-k8s"
+
+# Uploading and loading of static files
+[dependencies.arcs_static]
+path = "./arcs-deploy-static"
+package = "arcs-deploy-static"
+
+# Parsing YAML file cfg
+[dependencies.yaml]
+path = "./arcs-yaml"
+package = "arcs-ctf_yaml-parser"
+
+# Editing YAML cfgs programmatically
+[dependencies.yaml_editor]
+path = "./arcs-yaml-editor"
+package = "arcs-yaml-editor"
+
+
+
+
+#
+# Build dependencies
+#
+
+# Loading .env files
+[build-dependencies.dotenvy]
+version = "0.15"
+
+# Parsing JSON
+[build-dependencies.serde_json]
+version = "1"
+
+# Making HTTP requests
+[build-dependencies.reqwest]
+version = "0.12"
+features = ["blocking", "http2"]
+default_features = false
+
+# Parsing JSON Schemas
+[build-dependencies.schemars]
+version = "0.8"
+features = ["uuid1", "chrono"]
+default_features = false
+
+# Transforms JSON Schemas into Rust types
+[build-dependencies.typify]
+version = "0.0.16"
+default_features = false
+
+# Parsing rust code into an AST
+[build-dependencies.syn]
+version = "2"
+default_features = false
+features = ["parsing"]
+
+# Formatting parsed Rust code to a more readable format
+[build-dependencies.prettyplease]
+version = "0.2.15"
+
+
+
+#
+# Profiles
+#
 
 [profile.dev]
 split-debuginfo = "unpacked"
-
 
 [profile.release-overoptimized]
 inherits = "release"

@@ -1,9 +1,8 @@
-use hashlink::LinkedHashMap;
-use yaml_rust::{ Yaml, YamlEmitter };
+use yaml_rust::{ Yaml, YamlEmitter, yaml::Hash };
 use crate::locations::Locations;
 
 fn get_hash(key: &str, value: Yaml) -> Yaml {
-    let hash_map: LinkedHashMap<Yaml, Yaml> = LinkedHashMap::from_iter(
+    let hash_map: Hash = Hash::from_iter(
         std::iter::once(
             (
                 Yaml::String(key.to_string()),

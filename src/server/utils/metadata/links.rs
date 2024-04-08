@@ -1,5 +1,5 @@
-use arcs_yaml_parser::YamlShape;
-use arcs_yaml_parser::files::structs::ContainerType;
+use yaml::YamlShape;
+use yaml::files::structs::ContainerType;
 
 use crate::server::responses::Metadata;
 use crate::env::s3_display_address;
@@ -68,7 +68,7 @@ pub fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<Vec<St
 
 
 
-use arcs_yaml_parser::deploy::structs::{
+use yaml::deploy::structs::{
     DeployLink,
     DeployTargetType,
 };

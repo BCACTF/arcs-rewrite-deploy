@@ -14,9 +14,14 @@ tokio = { version = "1.20.1", features=["full"] }
 kube = "0.82.0"
 futures = "0.3.23"
 
-arcs-logging-rs = "0.1.2"
-arcs-env-rs = "0.2.1"
-
-serde_json="1.0.85"
-dotenv = "0.15.0"
+serde_json="1"
+dotenvy = "0.15"
 base64 = "0.21.0"
+
+[dependencies.arcs_env]
+package = "arcs-env-rs"
+version = "0.2"
+
+[dependencies.arcs_logging_rs]
+package = "arcs-logging-rs"
+version = "0.1"

@@ -1,4 +1,4 @@
-use arcs_yaml_parser::YamlShape;
+use yaml::YamlShape;
 
 use crate::server::utils::api_types::outgoing::{ DeploymentStatus, FromDeploy, Status };
 

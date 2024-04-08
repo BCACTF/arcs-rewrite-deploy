@@ -1,4 +1,4 @@
-use arcs_env_rs::*;
+use arcs_env::*;
 
 env_var_req!(S3_BEARER_TOKEN);
 env_var_req!(S3_ACCESS_KEY);

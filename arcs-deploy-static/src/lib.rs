@@ -1,7 +1,7 @@
 use std::io::Read;
 use std::path::PathBuf;
 
-use arcs_deploy_docker::fetch_container_file;
+use arcs_docker::fetch_container_file;
 
 #[allow(unused_macros)]
 pub mod logging {
@@ -14,7 +14,7 @@ use logging::*;
 pub mod env;
 use env::*;
 
-use arcs_yaml_parser::{YamlShape, YamlVerifyError, File};
+use yaml::{YamlShape, YamlVerifyError, File};
 use reqwest::header::{HeaderName, HeaderMap};
 use s3::Bucket;
 use s3::creds::Credentials;

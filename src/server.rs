@@ -5,11 +5,11 @@ pub mod utils;
 
 use responses::{ Response, Metadata };
 use actix_web::{ App, HttpServer, web, Responder };
-use arcs_yaml_editor::Modifications;
+use yaml_editor::Modifications;
 
 use actix_web::post;
-use arcs_deploy_docker::docker_login;
-use arcs_deploy_k8s::create_client;
+use arcs_docker::docker_login;
+use arcs_k8s::create_client;
 use kube::Client;
 use serde::Deserialize;
 use shiplift::Docker;
@@ -56,12 +56,12 @@ pub struct Deploy {
 async fn generate_clients(meta: Metadata) -> Result<(Docker, Client), Response> {
     let docker: Docker = match docker_login().await {
         Ok(docker) => docker,
-        Err(err) => return Err(Response::err_docker_login(meta, &err)),
+        Err(err) => return Err(Response::err_docker_login(meta, err)),
     };
     
     let k8s : Client = match create_client().await {
         Ok(client) => client,
-        Err(err) => return Err(Response::err_k8s_login(meta, &err)),
+        Err(err) => return Err(Response::err_k8s_login(meta, err)),
     };
 
     Ok((docker, k8s))
@@ -132,7 +132,7 @@ async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
             sync_metadata_with_webhook(&meta, new_yaml).await.wrap()
         },
         "LIST_CHALLS" => {
-            match crate::server::utils::git::get_all_chall_names(std::path::Path::new(arcs_deploy_static::env::chall_folder_default()), &meta) {
+            match crate::server::utils::git::get_all_chall_names(std::path::Path::new(arcs_static::env::chall_folder_default()), &meta) {
                 Ok(chall_names) => Response::success_list_challs(&chall_names).wrap(),
                 Err(resp) => resp.wrap(),
             }

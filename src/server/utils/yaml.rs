@@ -1,8 +1,8 @@
 use tokio::fs::{ read_to_string, write };
 
-use arcs_deploy_static::{chall_yaml_path, fetch_chall_yaml};
-use arcs_yaml_editor::Modifications;
-use arcs_yaml_parser::YamlShape;
+use arcs_static::{chall_yaml_path, fetch_chall_yaml};
+use yaml_editor::Modifications;
+use yaml::YamlShape;
 
 use crate::server::responses::{Response, Metadata};
 use crate::logging::*;
@@ -64,7 +64,7 @@ pub async fn update_yaml_file(chall_folder_name: &str, modifications: Modificati
 pub async fn handle_yaml_get(meta: &Metadata) -> Option<YamlShape> {
     use crate::polling::fail_deployment;
     use crate::server::utils::state_management::send_failure_message;
-    use arcs_yaml_parser::YamlVerifyError;
+    use yaml::YamlVerifyError;
 
     let meta = meta.clone();
     let polling_id = meta.poll_id();

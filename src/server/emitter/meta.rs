@@ -1,4 +1,4 @@
-use arcs_yaml_parser::YamlShape;
+use yaml::YamlShape;
 
 use crate::env::{webhook_address, deploy_token};
 use crate::logging::*;

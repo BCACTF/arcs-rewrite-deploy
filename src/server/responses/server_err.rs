@@ -1,7 +1,5 @@
 use std::fmt::Display;
 
-use arcs_yaml_parser::YamlShape;
-
 use crate::server::utils::api_types::outgoing::{ DeploymentStatus, FromDeploy, Status };
 
 use super::{Metadata, Response, StatusCode};

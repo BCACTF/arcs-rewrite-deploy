@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-marked-yaml = "0.2.0"
-yaml-rust = { version = "0.5", package = "yaml-rust-davvid" }
-hashlink = "0.8.4"
-serde = { version = "1.0.152", features = ["derive"] }
+marked-yaml = "0.5"
+serde = { version = "1", features = ["derive"] }
+yaml-rust = { version = "0.8", package = "yaml-rust2" }

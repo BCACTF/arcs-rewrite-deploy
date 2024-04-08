@@ -1,12 +1,12 @@
 use std::path::Path;
 
-use arcs_deploy_docker::{ build_image, delete_image as delete_docker_image, push_image, pull_image };
-use arcs_deploy_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge, get_chall_folder };
-use arcs_deploy_static::deploy_static_files;
+use arcs_docker::{ build_image, delete_image as delete_docker_image, push_image, pull_image };
+use arcs_k8s::{ create_challenge as create_full_k8s_deployment, delete_challenge as delete_k8s_challenge, get_chall_folder };
+use arcs_static::deploy_static_files;
 
-use arcs_deploy_static::env::chall_folder_default;
-use arcs_yaml_editor::Modifications;
-use arcs_yaml_parser::{
+use arcs_static::env::chall_folder_default;
+use yaml_editor::Modifications;
+use yaml::{
     deploy::structs::{DeployTarget, DeployTargetType},
     YamlShape
 };
@@ -290,7 +290,7 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
 
 
     use std::time::{ SystemTime, UNIX_EPOCH };
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|duration| duration.as_millis());
+    let _timestamp = SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|duration| duration.as_millis());
 
     Ok(Response::success_deploy_start(meta))
 }

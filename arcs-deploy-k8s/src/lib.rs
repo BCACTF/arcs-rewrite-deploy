@@ -1,10 +1,16 @@
 use env::chall_folder_default;
 use futures::StreamExt;
-use k8s_openapi::api::{core::v1::{Pod, Service, Secret}, 
-                  apps::v1::Deployment};
-use kube::{Client, Api, Error, 
-           core::ObjectList,
-           api::{ListParams, PostParams, DeleteParams}};
+use k8s_openapi::api::{
+    core::v1::{ Pod, Service, Secret }, 
+    apps::v1::Deployment,
+};
+use kube::{
+    Client,
+    Api,
+    Error,
+    core::ObjectList,
+    api::{ ListParams, PostParams, DeleteParams },
+};
 use kube_runtime::{watcher::Config, WatchStreamExt};
 use std::{fs::File, io::Read, path::PathBuf, collections::HashMap};
 pub mod network_protocol;

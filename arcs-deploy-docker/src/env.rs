@@ -1,4 +1,4 @@
-use arcs_env_rs::*;
+use arcs_env::*;
 
 env_var_req!(DOCKER_REGISTRY_USERNAME -> REG_USERNAME);
 env_var_req!(DOCKER_REGISTRY_PASSWORD -> REG_PASSWORD);

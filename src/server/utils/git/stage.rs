@@ -5,7 +5,6 @@ use git2::{
     DiffOptions,
     IndexAddOption,
     Oid,
-    Error
 };
 
 use super::GitResult;

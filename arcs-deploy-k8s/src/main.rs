@@ -5,8 +5,7 @@ use arcs_deploy_k8s::logging;
 
 use std::io::Result as IOResult;
 
-use dotenv::dotenv;
-extern crate dotenv;
+use dotenvy::dotenv;
 
 #[tokio::main]
 async fn main() -> IOResult<()>{

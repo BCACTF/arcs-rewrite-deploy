@@ -1,4 +1,4 @@
-use arcs_yaml_parser::deploy::structs::{DeployLink, DeployTargetType};
+use yaml::deploy::structs::{DeployLink, DeployTargetType};
 
 use crate::server::responses::Metadata;
 

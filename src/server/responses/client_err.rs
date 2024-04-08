@@ -1,4 +1,3 @@
-use arcs_yaml_parser::YamlShape;
 use uuid::Uuid;
 
 use crate::server::utils::api_types::outgoing::{ DeploymentStatus, FromDeploy, Status };

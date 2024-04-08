@@ -6,8 +6,7 @@ use arcs_deploy_docker::check_env_vars;
 
 use arcs_deploy_docker::logging;
 
-extern crate dotenv;
-use dotenv::dotenv;
+use dotenvy::dotenv;
 
 #[tokio::main]
 async fn main() -> IOResult<()> {
