@@ -130,7 +130,13 @@ async fn incoming_post(info: web::Json<Deploy>) -> impl Responder {
             trace!("YAML updated correctly, moving on to webhook sync");
 
             sync_metadata_with_webhook(&meta, new_yaml).await.wrap()
-        }
+        },
+        "LIST_CHALLS" => {
+            match crate::server::utils::git::get_all_chall_names(std::path::Path::new(arcs_deploy_static::env::chall_folder_default()), &meta) {
+                Ok(chall_names) => Response::success_list_challs(&chall_names).wrap(),
+                Err(resp) => resp.wrap(),
+            }
+        },
         _ => {
             warn!("Endpoint {} not implemented on deploy server", info.__type);
             Response::endpoint_doesnt_exist_err(meta, &info.__type).wrap()

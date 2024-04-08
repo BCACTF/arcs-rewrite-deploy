@@ -70,10 +70,10 @@ impl Response {
         )
     }
 
-    pub fn success_list_challs(challs: &[&str]) -> Self {
+    pub fn success_list_challs(challs: &[impl ToString]) -> Self {
         Self(
             StatusCode::SUCCESS,
-            FromDeploy::ChallNameList(challs.iter().copied().map(str::to_string).collect())
+            FromDeploy::ChallNameList(challs.iter().map(ToString::to_string).collect())
         )
     }
 }

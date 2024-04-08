@@ -47,7 +47,7 @@ pub fn make_commit(repo_path: &Path, files_to_add: &[&Path], message: &str, meta
 
     if let Err(e) = new_commit_from_files(&repo, files_to_add, message) {
         error!("Failed to commit files: {}", e);
-        Err(Response::git_err(meta, &format!("Failed to commit files: {}", e)))
+        Err(Response::git_err(meta, format!("Failed to commit files: {}", e)))
     } else {
         Ok(())
     }
@@ -72,7 +72,7 @@ pub fn push_all(repo_path: &Path, meta: &Metadata) -> Result<(), Response> {
 
     if let Err(e) = remote.push::<&str>(&[&branch_refspec], Some(PushOptions::new().remote_callbacks(get_auth_callbacks()))) {
         error!("Failed to push to remote: {e:?}");
-        Err(Response::git_err(meta, &format!("Failed to push to remote: {e:?}")))
+        Err(Response::git_err(meta, format!("Failed to push to remote: {e:?}")))
     } else {
         Ok(())
     }

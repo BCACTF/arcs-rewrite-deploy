@@ -8,8 +8,9 @@ use git2::{
     Error
 };
 
+use super::GitResult;
 
-pub type GitResult<T = ()> = Result<T, Error>;
+
 
 pub fn stage_all_unstaged(repo: &Repository) -> GitResult<Option<(Oid, String)>> {
     let unstaged_diff = repo.diff_index_to_workdir(

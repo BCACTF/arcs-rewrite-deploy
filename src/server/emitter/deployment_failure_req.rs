@@ -56,7 +56,13 @@ async fn handle_deployment_failure(
 
     let status_code = response.status();
 
-    match response.json::<Outgoing>().await {
+
+    let text = response.text().await.unwrap();
+    let json = serde_json::from_str::<Outgoing>(&text);
+
+    debug!("Response body:\n{text}");
+    // match response.json::<Outgoing>().await {
+    match json {
         Ok(response) => {
 
             let Some(DiscordResult::Success(_)) = response.discord else {
@@ -72,6 +78,7 @@ async fn handle_deployment_failure(
         Err(outgoing_error) => {
             error!("Error parsing response from webhook server");
             error!("Trace: {:#?}", outgoing_error);
+            error!("Trace: {}", outgoing_error);
             return Err("Error parsing response from webhook server".to_string());
         },
     };

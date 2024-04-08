@@ -109,12 +109,9 @@ async fn handle_deployment_success(
                 return Err("SQL server returned a challenge with a different ID than the poll ID".to_string());
             };
 
-            let Some(DiscSuccess(_)) = response.discord else {
+            if !matches!(response.discord, Some(DiscSuccess(_))) {
                 error!("Expected a successful result from Discord, but got none or a bad result");
-                return Err("Discord returned an undexpected result".to_string());
-            };
-
-            if !status_code.is_success() {
+            } else if !status_code.is_success() {
                 error!("Despite good results otherwise, status code had an issue");
                 return Err("Status code issue".to_string());
             }
