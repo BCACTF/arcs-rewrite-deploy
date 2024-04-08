@@ -17,7 +17,7 @@ serde = { version = "1.0.152", features = ["derive"] }
 arcs-deploy-docker = { version = "0.1.0", path = "./arcs-deploy-docker" }
 arcs-deploy-k8s = { version = "0.1.0", path = "./arcs-deploy-k8s" }
 arcs-deploy-static = { version = "0.1.0", path="./arcs-deploy-static" }
-arcs-yaml-parser = { version = "0.1.0", path = "./arcs-yaml" }
+arcs-yaml-parser = { package = "arcs-ctf_yaml-parser", version = "0.1.0", path = "./arcs-yaml" }
 arcs-yaml-editor = { version = "0.1.0", path = "./arcs-yaml-editor" }
 
 
