@@ -15,7 +15,7 @@ serde = { version = "1.0.152", features = ["derive"] }
 
 
 shiplift = { git = "https://github.com/fortanix/shiplift", branch = "master" }
-kube = "0.82.0"
+kube = "0.90"
 
 dotenvy = "0.15"
 chashmap = "2.2.2"

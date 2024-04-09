@@ -4,7 +4,7 @@ use actix_web::body::BoxBody;
 use actix_web::{ResponseError, HttpResponse};
 use lazy_static::lazy_static;
 
-use constant_time_eq::constant_time_eq_32;
+use constant_time_eq::constant_time_eq_n;
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use actix_web::dev::ServiceRequest;
 use actix_web::http::StatusCode as actixStatusCode;
@@ -39,14 +39,16 @@ impl Authentication {
     pub const BAD_REQUEST: Self = Authentication { status_code: actixStatusCode::BAD_REQUEST, message: "Malformed Request" };
 }
 
+const KEY_SIZE: usize = 64;
+
 lazy_static! {
     // parsed into a [u8;32] for constant time comparison
-    static ref WEBHOOKARR : [u8;32]= match (&webhook_token().as_bytes().to_owned()[..]).try_into() {
+    static ref WEBHOOKARR : [u8; KEY_SIZE]= match (&webhook_token().as_bytes().to_owned()[..]).try_into() {
         Ok(arr) => arr,
         Err(e) => {
-            error!("Error converting from slice to [u8;32]");
+            error!("Error converting from slice to [u8;{KEY_SIZE}]");
             error!("{:?}", e);
-            panic!("Failed to convert WEBHOOK_SERVER_AUTH_TOKEN to [u8;32]");
+            panic!("Failed to convert WEBHOOK_SERVER_AUTH_TOKEN to [u8;{KEY_SIZE}]");
         },
     };
 }
@@ -64,17 +66,17 @@ pub async fn validate_auth_token (
     credentials: BearerAuth,
 ) -> Result<ServiceRequest, (actix_web::Error, ServiceRequest)> {
 
-    let credarr : [u8;32]= match (&credentials.token().as_bytes().to_owned()[..]).try_into() {
+    let credarr : [u8; KEY_SIZE]= match (&credentials.token().as_bytes().to_owned()[..]).try_into() {
         Ok(arr) => arr,
         Err(e) => {
-            error!("Error converting credentials from slice to [u8;32]");
-            warn!("Ensure size is 32 bytes");
+            error!("Error converting credentials from slice to [u8;{KEY_SIZE}]");
+            warn!("Ensure size is {KEY_SIZE} bytes");
             trace!("{:?}", e);
             return Err((Authentication::BAD_REQUEST.into(), req))
         },
     };
 
-    if constant_time_eq_32(&credarr, &WEBHOOKARR) {
+    if constant_time_eq_n(&credarr, &WEBHOOKARR) {
         return Ok(req);
     }
 
