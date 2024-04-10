@@ -45,52 +45,11 @@ pub async fn get_container_file_data(name: &str, file: &File, docker: &Docker) -
     warn!("At the moment, this is currently NOT functioning if running a multi-server cluster.");
     warn!("To fix, build the container on the same server as this one and redeploy.");
 
-    let container_file = fetch_container_file(docker, name, file.path()).await;
-    let Ok(file_data) = container_file else {
-        error!("Failed to fetch file from container: {:#?}", container_file);
-        return None;
-    };
-
-    let mut archive: tar::Archive<&[u8]> = tar::Archive::new(file_data.as_slice());
-    let entries = archive.entries();
-    let Ok(mut entries) = entries else {
-        error!("Failed to fetch tar entires from container file: {:#?}", entries.err());
-        return None;
-    };
-
-    let specific_entry = entries.find(|entry| {
-        info!("Checking an entry...");
-        let Ok(entry) = entry else { return false; };
-        
-        let Ok(entry_path) = entry.path() else { return false; };
-        info!("Entry path: {:?}", entry_path);
-
-        let Some(entry_path) = entry_path.to_str() else { return false; };
-        
-        let Some(file_path) = file.path().to_str() else { return false; };
-        let Some((_, filename)) = file_path.rsplit_once("/") else { return false; };
-        
-        info!("Filename: {:?}", filename);
-        entry_path.contains(filename)
-    });
-
-    match specific_entry {
-        Some(Ok(mut entry)) => {
-            let mut filedata = vec![];
-            if let Err(e) = entry.read_to_end(&mut filedata) {
-                error!("Failed to read file from container: {:#?}", e);
-                None
-            } else {
-                Some(filedata)
-            }
-            
-        },
-        Some(Err(e)) => {
-            error!("Failed to fetch file from container: {:#?}", e);
-            None
-        },
-        None => {
-            error!("Error getting entry from list of entries");
+    let file_fetch_result = fetch_container_file(docker, name, file.path()).await;
+    match file_fetch_result {
+        Ok(file_data) => Some(file_data),
+        Err(e) => {
+            error!("Failed to fetch file from container {name}: {:#?}", e);
             None
         }
     }

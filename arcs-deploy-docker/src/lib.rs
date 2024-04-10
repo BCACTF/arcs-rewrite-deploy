@@ -1,7 +1,8 @@
 use env::chall_folder_default;
 use futures::TryStreamExt;
-use shiplift::container::ContainerInfo;
+use shiplift::{container::ContainerInfo, image::ProgressDetail};
 use shiplift::image::ImageBuildChunk;
+use std::io::Read;
 use std::path::Path;
 use std::fs::read_dir;
 
@@ -61,7 +62,7 @@ pub async fn retrieve_images(docker: &Docker) -> Result<Vec<ImageInfo>, String> 
 }
 
 /// Retrieve all Docker containers on the system
-pub async fn retrieve_containers(docker: &Docker) -> Result <Vec<ContainerInfo>, String> {
+pub async fn retrieve_containers(docker: &Docker) -> Result<Vec<ContainerInfo>, String> {
     match docker.containers().list(&Default::default()).await {
         Ok(containers) => {
             Ok(containers)
@@ -312,7 +313,7 @@ pub async fn pull_image(docker: &Docker, name: &str, inner_path: Option<&Path>) 
         .password(registry_password)
         .server_address(registry_url)
         .build();
-        
+
     let mut complete_url = PathBuf::from(registry_url);
     complete_url.push(name);
 
@@ -396,54 +397,149 @@ pub async fn delete_image(docker: &Docker, name: &str, inner_path: Option<&Path>
         }
     }
 }
+
 // TODO --> make this nicer, feels really hacky atm
-pub async fn fetch_container_file(docker: &Docker, container_name: &str, file_path: &Path) -> Result<Vec<u8>, String> {
-    let reg_url = reg_url();
-    
+pub async fn fetch_container_file(docker: &Docker, image: &str, file_path: &Path) -> Result<Vec<u8>, String> {
+    pub async fn cleanup(name: &str, docker: &Docker) -> Result<(), String> {
+        let options = shiplift::container::RmContainerOptions::builder().force(true).build();
+        match docker.containers().get(name).remove(options).await {
+            Ok(_) => {
+                info!("Container {name} deleted successfully");
+                Ok(())
+            },
+            Err(e) => {
+                error!("Error deleting container {name}");
+                debug!("Trace: {:?}", e);
+                Err(e.to_string())
+            }
+        }
+    }
+
+    pub fn container_nameize(image: &str, file_path: &Path) -> String {
+        let unescaped = format!("{image}//getfile-{}", file_path.display());
+
+        let unescaped_iter = unescaped
+            .chars()
+            .map(|c| {
+                match c {
+                    '/' | '-' | '_' | '.' => '_',
+                    'a'..='z' | 'A'..='Z' | '0'..='9' => c.to_ascii_lowercase(),
+                    _ => '_'
+                }
+            });
+
+        "file.".chars().chain(unescaped_iter).collect::<String>()
+    }
+
     warn!("IMAGE REQUESTING FILE INSIDE CONTAINER RUNNING...");
-    let image_name = format!("{}/{}", reg_url, container_name);
 
-    use shiplift::container::ContainerOptions;
-    let opts = ContainerOptions::builder(&image_name).build();
+    // Pull container
+    use shiplift::PullOptions;
+    trace!("Pulling image {}", image);
+    pull_image(docker, image, None).await?;
 
-    let containers = docker.containers();
 
-    if let Ok(create_result) = containers.create(&opts).await {
-        info!("Successfully started docker container for image {}", image_name);
-        containers.get(create_result.id);
-    } else {
-        warn!("Could not create the docker container in the current system. Image name: {}", image_name);
-        return Err(format!("Could not create the docker container in the current system."));
-    };
+    // Create container
+    trace!("Creating container for image {image:?}");
 
-    let container_info = if let Some(container) = retrieve_containers(docker).await?
-        .into_iter()
-        .find(|container| {
-            let non_id_name = if let Some((name, _)) = container.image.split_once("@") {
-                name
-            } else {
-                container.image.as_str()
-            };
-            non_id_name == format!("{}/{}", reg_url, container_name)
-        })
-        {
-            container
-        } else {
-            error!("Container '{}' not found", container_name);
-            return Err(format!("Container '{}' not found", container_name));
-        };
+    use shiplift::ContainerOptions;
+    let mut full_image_path = PathBuf::from(reg_url());
+    full_image_path.push(image);
+    let full_image_path = full_image_path.to_string_lossy();
 
-    let container = docker.containers().get(container_info.id);
+    let container_name = container_nameize(
+        image,
+        file_path,
+    );
+    let container_options = ContainerOptions::builder(&full_image_path)
+        .name(&container_name)
+        .cmd(vec![
+            "/bin/bash",
+            "-c",
+            "sleep infinity",
+        ])
+        .build();
 
-    let file = container.copy_from(file_path);
-    let data = match file.try_concat().await {
-        Ok(data) => data,
+    let container_create_result = docker.containers().create(&container_options).await;
+    let created_container_id = match container_create_result {
+        Ok(info) => {
+            info!("Container {container_name:?} created successfully");
+            info.id
+        },
         Err(e) => {
-            error!("Error fetching file within Docker container");
+            error!("Error creating container {container_name:?}");
             debug!("Trace: {:?}", e);
             return Err(e.to_string());
         }
     };
-    
-    Ok(data)
+    info!("Container {container_name:?} created with id {created_container_id}");
+
+
+    // Start container to be able to exec commands
+    trace!("Starting container {container_name:?}");
+    match docker.containers().get(&created_container_id).start().await {
+        Ok(_) => {
+            info!("Container {container_name:?} started successfully");
+        },
+        Err(e) => {
+            error!("Error starting container {container_name:?}");
+            debug!("Trace: {:?}", e);
+            return Err(e.to_string());
+        }
+    }
+
+    use shiplift::ExecContainerOptions;
+    trace!("Executing file get command in container {container_name:?}");
+
+    let file_path = file_path.to_string_lossy();
+    let exec_options = ExecContainerOptions::builder()
+        .attach_stdout(true)
+        .cmd(vec!["cat", &file_path])
+        .build();
+    let mut exec_stream = docker
+        .containers()
+        .get(&container_name)
+        .exec(&exec_options);
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+
+    while let Some(exec_result) = exec_stream.next().await {
+        match exec_result {
+            Ok(exec_result) => {
+                match exec_result {
+                    shiplift::tty::TtyChunk::StdOut(chunk) => {
+                        stdout.extend_from_slice(&chunk);
+                    },
+                    shiplift::tty::TtyChunk::StdErr(chunk) => {
+                        stderr.extend_from_slice(&chunk);
+                    },
+                    _ => {},
+                }
+            },
+            Err(e) => {
+                // Delete the container to not leak resources
+                trace!("Cleaning up container {container_name:?}");
+                let _ = cleanup(&created_container_id, docker).await;
+
+                error!("Error executing command in container");
+                debug!("Trace: {:?}", e);
+                return Err(e.to_string());
+            },
+        }
+    }
+    info!("Got file contents from container {container_name:?}");
+
+    // Delete the container to not leak resources
+    trace!("Cleaning up container {container_name:?}");
+    cleanup(&created_container_id, docker).await?;
+
+    if stderr.len() > 0 {
+        error!("Error executing command in container");
+        error!("Stderr contents:\n{}", String::from_utf8_lossy(&stderr));
+        return Err("Error executing command in container".to_string());
+    }
+
+
+    Ok(stdout)
 }
