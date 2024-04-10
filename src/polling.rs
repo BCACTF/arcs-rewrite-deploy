@@ -4,6 +4,7 @@ use std::time::{ Instant, SystemTime, Duration };
 use chashmap::CHashMap;
 use serde::{ Serialize, Serializer };
 use crate::server::responses::{Response, Metadata};
+use crate::logging::*;
 
 macro_rules! create_prefix {
     ($prefix:literal) => {
@@ -169,11 +170,21 @@ lazy_static! {
 
 /// Registers a new deployment with the given `PollingId` and returns an error if the deployment is already in progress
 pub fn register_chall_deployment(id: PollingId) -> Result<(), DeploymentStatus> {
+    trace!("Registering deployment with ID: {id:?}");
     if let Some(curr_status) = CURRENT_DEPLOYMENTS.get(&id) {
         Err(curr_status.clone())
     } else {
         CURRENT_DEPLOYMENTS.insert(id, DeploymentStatus::InProgress(Instant::now(), DeployStep::Building));
         Ok(())
+    }
+}
+
+/// Registers a new deployment with the given `PollingId` and returns an error if the deployment is already in progress
+pub fn deregister_id(id: PollingId) -> Option<DeploymentStatus> {
+    if let Some(curr_status) = CURRENT_DEPLOYMENTS.remove(&id) {
+        Some(curr_status)
+    } else {
+        None
     }
 }
 
@@ -208,6 +219,11 @@ pub fn poll_deployment(id: PollingId) -> Result<PollInfo, PollingId> {
     if let Some(status) = CURRENT_DEPLOYMENTS.get(&id) {
         let duration_since_last_change = Instant::now().duration_since(status.last_change());
         let poll_time = SystemTime::now();
+
+        if !status.is_finished() {
+            debug!("{id} — {} for {}s", status.get_str(), duration_since_last_change.as_secs());
+        }
+
         Ok(PollInfo {
             id,
             status: status.clone(),
@@ -219,28 +235,44 @@ pub fn poll_deployment(id: PollingId) -> Result<PollInfo, PollingId> {
     }
 }
 
-pub fn _update_deployment_state(id: PollingId, new_status: DeploymentStatus) -> Result<DeploymentStatus, PollingId> {
+
+
+fn update_deployment_state_mapper(
+    id: PollingId,
+    mapper: impl FnOnce(&DeploymentStatus) -> Option<DeploymentStatus>,
+) -> Result<Option<DeploymentStatus>, PollingId> {
     if let Some(mut status) = CURRENT_DEPLOYMENTS.get_mut(&id) {
-        *status = new_status;
-        Ok(status.clone())
+        debug!("Got status: {:?}", &*status);
+
+        if let Some(new_status) = mapper(&status) {
+            crate::logging::debug!("Updating status to: {:?}", new_status);
+            *status = new_status;
+            Ok(Some(status.clone()))
+        } else {
+            warn!("No status was returned from the status mapper");
+            Ok(None)
+        }
     } else {
+        debug!("Status not found");
         Err(id)
     }
 }
 
+fn update_deployment_state(id: PollingId, new_status: DeploymentStatus) -> Result<DeploymentStatus, PollingId> {
+    update_deployment_state_mapper(id, |_| Some(new_status))?.ok_or(id)
+}
+
 pub fn advance_deployment_step(id: PollingId, new_step: Option<DeployStep>) -> Result<DeploymentStatus, PollingId> {
-    if let Some(mut status) = CURRENT_DEPLOYMENTS.get_mut(&id) {
-        if let DeploymentStatus::InProgress(time, step) = &mut *status {
-            let new_step = new_step.or_else(|| step.next()).ok_or(id)?;
-            *step = new_step;
-            *time = Instant::now();
-            Ok(status.clone())
-        } else {
-            Err(id)
-        }
-    } else {
-        Err(id)
-    }
+    let status_mapper = |status: &DeploymentStatus| {
+        let &DeploymentStatus::InProgress(time, step) = status else { return None };
+
+        let new_step = new_step.or_else(|| step.next())?;
+        let new_time = if new_step != step { Instant::now() } else { time };
+
+        Some(DeploymentStatus::InProgress(Instant::now(), new_step))
+    };
+
+    update_deployment_state_mapper(id, status_mapper)?.ok_or(id)
 }
 
 /// Marks a given `PollingId` as `DeploymentStatus::Failure`
@@ -248,16 +280,11 @@ pub fn advance_deployment_step(id: PollingId, new_step: Option<DeployStep>) -> R
 /// - `Ok(DeploymentStatus)` : Returns the new `DeploymentStatus` if the `PollingId` was marked as successful
 /// - `Err(PollingId)` : Returns the `PollingId` if the given `PollingId` is already marked as finished
 pub fn fail_deployment(id: PollingId, reason: String) -> Result<DeploymentStatus, PollingId> {
-    if let Some(mut status) = CURRENT_DEPLOYMENTS.get_mut(&id) {
-        if !status.is_finished() {
-            *status = DeploymentStatus::Failure(Instant::now(), reason);
-            Ok(status.clone())
-        } else {
-            Err(id)
-        }
-    } else {
-        Err(id)
-    }
+    let status_mapper = |status: &DeploymentStatus| {
+        (!status.is_finished()).then_some(DeploymentStatus::Failure(Instant::now(), reason))
+    };
+
+    update_deployment_state_mapper(id, status_mapper)?.ok_or(id)
 }
 
 /// Marks a given `PollingId` as `DeploymentStatus::Success`
@@ -265,14 +292,9 @@ pub fn fail_deployment(id: PollingId, reason: String) -> Result<DeploymentStatus
 /// - `Ok(DeploymentStatus)` : Returns the new `DeploymentStatus` if the `PollingId` was marked as successful
 /// - `Err(PollingId)` : Returns the `PollingId` if the given `PollingId` is already marked as finished
 pub fn succeed_deployment(id: PollingId, response: &[i32]) -> Result<DeploymentStatus, PollingId> {
-    if let Some(mut status) = CURRENT_DEPLOYMENTS.get_mut(&id) {
-        if !status.is_finished() {
-            *status = DeploymentStatus::Success(Instant::now(), response.to_vec());
-            Ok(status.clone())
-        } else {
-            Err(id)
-        }
-    } else {
-        Err(id)
-    }
+    let status_mapper = |status: &DeploymentStatus| {
+        (!status.is_finished()).then_some(DeploymentStatus::Success(Instant::now(), response.to_vec()))
+    };
+
+    update_deployment_state_mapper(id, status_mapper)?.ok_or(id)
 }

@@ -24,7 +24,7 @@ use crate::server::utils::{
 };
 use crate::emitter::send_deployment_success;
 use crate::logging::*;
-use crate::polling::{ PollingId, register_chall_deployment, fail_deployment, succeed_deployment };
+use crate::polling::{ PollingId, register_chall_deployment, fail_deployment, succeed_deployment, deregister_id };
 
 
 #[derive(Debug, Clone)]
@@ -244,13 +244,9 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
         if !status.is_finished() {
             return Err(Response::poll_id_in_use(meta, polling_id, status));
         }
-        let failed_to_update_poll_id = crate::polling::_update_deployment_state(
-            polling_id,
-            crate::polling::DeploymentStatus::InProgress(
-                std::time::Instant::now(),
-                crate::polling::DeployStep::Building,
-            ),
-        ).is_err();
+        let failed_to_update_poll_id = deregister_id(polling_id).is_none();
+        let failed_to_update_poll_id = failed_to_update_poll_id || register_chall_deployment(polling_id).is_err();
+
         if failed_to_update_poll_id {
             return Err(Response::unknown_ise(meta, "Failed to update deployment state"));
         }
@@ -277,8 +273,18 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
         let mut deployed_servers : Vec<(DeployTargetType, Vec<i32>)> = Vec::new();
         for (target, target_type) in collected {
             if !deploy_target(&docker, &client, target, target_type, &meta, &mut deployed_servers).await {
+                if let Err(id) = fail_deployment(polling_id, "Failed to deploy challenge".to_string()) {
+                    error!("Failed to mark deployment as failed for id {id}");
+                }
                 return;
             }
+        }
+
+        let port_list: Vec<_> = deployed_servers.iter().map(|(_, ports)| ports).flatten().copied().collect();
+
+        match succeed_deployment(polling_id, &port_list) {
+            Ok(_) => info!("Successfully marked deployment as succeeded for {} ({})", meta.chall_name(), polling_id),
+            Err(e) => error!("Failed to mark deployment as succeeded for {} ({}): {e:?}", meta.chall_name(), polling_id),
         }
 
         // TODO --> on a failed to parse file path or other yaml error here, send out a deploy failure message (or try to at least)
