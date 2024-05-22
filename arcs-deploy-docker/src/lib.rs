@@ -111,7 +111,7 @@ pub async fn build_image(docker: &Docker, chall_folder_name : &str, inner_path: 
     }
 
     let build_options = BuildOptions::builder(challenge_path.to_string_lossy().to_string())
-        .tag(full_registry_path.to_string_lossy())
+        .tag(full_registry_path.to_string_lossy()) // FIXME --> Investigate why certain registries will reject this tag while others will accept it... leads to issues with invalid reference image?
         .dockerfile("Dockerfile")
         .rm(true)
         .build();
