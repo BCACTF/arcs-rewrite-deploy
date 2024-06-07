@@ -1,14 +1,11 @@
 use env::chall_folder_default;
-use futures::TryStreamExt;
-use shiplift::{container::ContainerInfo, image::ProgressDetail};
+use shiplift::container::ContainerInfo;
 use shiplift::image::ImageBuildChunk;
-use std::io::Read;
 use std::path::Path;
 use std::fs::read_dir;
 
 use shiplift::{Docker, image::{PushOptions, PullOptions, BuildOptions, ImageInfo}};
 
-use std::default::Default;
 use std::path::PathBuf;
 
 mod env;
@@ -434,7 +431,6 @@ pub async fn fetch_container_file(docker: &Docker, image: &str, file_path: &Path
     warn!("IMAGE REQUESTING FILE INSIDE CONTAINER RUNNING...");
 
     // Pull container
-    use shiplift::PullOptions;
     trace!("Pulling image {}", image);
     pull_image(docker, image, None).await?;
 

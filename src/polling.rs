@@ -258,10 +258,6 @@ fn update_deployment_state_mapper(
     }
 }
 
-fn update_deployment_state(id: PollingId, new_status: DeploymentStatus) -> Result<DeploymentStatus, PollingId> {
-    update_deployment_state_mapper(id, |_| Some(new_status))?.ok_or(id)
-}
-
 pub fn advance_deployment_step(id: PollingId, new_step: Option<DeployStep>) -> Result<DeploymentStatus, PollingId> {
     let status_mapper = |status: &DeploymentStatus| {
         let &DeploymentStatus::InProgress(time, step) = status else { return None };
@@ -269,7 +265,7 @@ pub fn advance_deployment_step(id: PollingId, new_step: Option<DeployStep>) -> R
         let new_step = new_step.or_else(|| step.next())?;
         let new_time = if new_step != step { Instant::now() } else { time };
 
-        Some(DeploymentStatus::InProgress(Instant::now(), new_step))
+        Some(DeploymentStatus::InProgress(new_time, new_step))
     };
 
     update_deployment_state_mapper(id, status_mapper)?.ok_or(id)
