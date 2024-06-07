@@ -118,11 +118,9 @@ pub fn get_all_chall_names(repo_path: &Path, meta: &Metadata) -> Result<Vec<Stri
     if let Ok(mut lock) = LAST_PULL_TIME.try_lock() {
         if let Ok(elapsed) = lock.elapsed() {
             if elapsed.as_secs() > 60 {
-                let Ok(_) = ensure_repo_up_to_date(repo_path, meta) else {
-                    error!("Failed to ensure repo is up to date");
-                    // return Err(Response::git_err(meta.clone(), "Failed to ensure repo is up to date"));
-                };
-                *lock = std::time::SystemTime::now();
+                if ensure_repo_up_to_date(repo_path, meta).is_ok() {
+                    *lock = std::time::SystemTime::now();
+                }
             }
         }
     }
