@@ -106,12 +106,26 @@ pub fn ensure_repo_up_to_date(repo_path: &Path, meta: &Metadata) -> Result<bool,
     Ok(could_connect)
 }
 
+static LAST_PULL_TIME: std::sync::Mutex<std::time::SystemTime> = std::sync::Mutex::new(std::time::SystemTime::UNIX_EPOCH);
+
 pub fn get_all_chall_names(repo_path: &Path, meta: &Metadata) -> Result<Vec<String>, Response> {
     let Ok(repo) = Repository::open(repo_path) else {
         error!("Failed to open repository");
         return Err(Response::git_err(meta.clone(), "Failed to open repository"));
     };
     trace!("Opened repository");
+
+    if let Ok(mut lock) = LAST_PULL_TIME.try_lock() {
+        if let Ok(elapsed) = lock.elapsed() {
+            if elapsed.as_secs() > 60 {
+                let Ok(_) = ensure_repo_up_to_date(repo_path, meta) else {
+                    error!("Failed to ensure repo is up to date");
+                    // return Err(Response::git_err(meta.clone(), "Failed to ensure repo is up to date"));
+                };
+                *lock = std::time::SystemTime::now();
+            }
+        }
+    }
 
     let chall_names = match files::get_all_chall_names(&repo) {
         Ok(chall_names) => chall_names,
