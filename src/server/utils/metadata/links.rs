@@ -44,9 +44,10 @@ pub fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<Vec<St
                 let Some(file_path) = file.path().to_str() else {
                     return Err("Failed to find file path for file".to_string());
                 };
-                let Some((_, filename)) = file_path.rsplit_once('/') else {
-                    return Err("Failed to parse file name for file path".to_string());
-                };
+                // let Some((_, filename)) = file_path.rsplit_once('/') else {
+                //     return Err("Failed to parse file name for file path".to_string());
+                // };
+                let filename = take_only_rightmost_segment(file_path);
                 static_file_links.push(format!("{base}/{chall}/{filename}"));
             }
             // If in the future there are other weird container files, add more branches here
@@ -54,9 +55,10 @@ pub fn get_static_file_links(meta: &Metadata, yaml: &YamlShape) -> Result<Vec<St
                 let Some(file_path) = file.path().to_str() else {
                     return Err("Failed to find file path for file".to_string());
                 };
-                let Some((_, name)) = file_path.rsplit_once('/') else {
-                    return Err("Failed to parse file name for file path".to_string());
-                };
+                // let Some((_, name)) = file_path.rsplit_once('/') else {
+                //     return Err("Failed to parse file name for file path".to_string());
+                // };
+                let name = take_only_rightmost_segment(file_path);
                 static_file_links.push(format!("{base}/{chall}/{name}"));
             }
         }
