@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::path::PathBuf;
 
 use arcs_docker::fetch_container_file;
@@ -104,24 +103,18 @@ pub async fn deploy_static_files(docker: &Docker, chall_name: &str) -> Result<Ve
     let mut failure = vec![];
 
     for file in files {
-        let url = {
-            let chall = chall_name.trim_matches('/');
-    
-            let file = if let Some(file_path) = file.path().to_str() {
-                if let Some((_, name)) = file_path.rsplit_once("/") {
-                    name
-                } else {
-                    file_path
-                }
+        let sub_chall_file = if let Some(file_path) = file.path().to_str() {
+            if let Some((_, name)) = file_path.rsplit_once("/") {
+                name
             } else {
-                failure.push(file);
-                continue;
-            };
-
-            info!("{:?}", file);
-            trace!("Pushing path: /{}/{}", chall, file);
-            format!("/{chall}/{file}")
+                file_path
+            }
+        } else {
+            failure.push(file);
+            continue;
         };
+
+        let s3_path = format!("/{}/{}", chall_name.trim_matches('/'), sub_chall_file);
 
         let Some(filedata): Option<Vec<u8>> = get_container_file_data(chall_name, &file, docker).await else {
             return Err(vec![]);
@@ -133,7 +126,7 @@ pub async fn deploy_static_files(docker: &Docker, chall_name: &str) -> Result<Ve
             "public-read".parse().unwrap(),
         );
 
-        let res = bucket.with_extra_headers(custom_headers).put_object(url, &filedata).await;
+        let res = bucket.with_extra_headers(custom_headers).put_object(s3_path, &filedata).await;
         
 
         match res {

@@ -7,8 +7,7 @@ use arcs_static::deploy_static_files;
 use arcs_static::env::chall_folder_default;
 use yaml_editor::Modifications;
 use yaml::{
-    deploy::structs::{DeployTarget, DeployTargetType},
-    YamlShape
+    deploy::structs::{DeployTarget, DeployTargetType}, YamlShape
 };
 
 
@@ -16,23 +15,15 @@ use kube::Client;
 use shiplift::Docker;
 use super::responses::{ Metadata, Response };
 
-use crate::server::utils::{
+use crate::{emitter::send_deployment_failure, server::utils::{
     errors::DeployProcessErr,
     git::{ ensure_repo_up_to_date, make_commit, push_all },
     state_management::{ advance_with_fail_log, send_failure_message },
-    yaml::{ update_yaml_file, handle_yaml_get },
-};
+    yaml::{ handle_yaml_get, update_yaml_file },
+}};
 use crate::emitter::send_deployment_success;
 use crate::logging::*;
 use crate::polling::{ PollingId, register_chall_deployment, fail_deployment, succeed_deployment, deregister_id };
-
-
-#[derive(Debug, Clone)]
-pub struct BuildChallengeErr(String);
-
-
-
-
 
 // TODO --> Add function to deploy everything, 
 // initial deployments to k8s clusters & general instance management
@@ -130,28 +121,32 @@ pub async fn delete_challenge(docker: &Docker, client: &Client, meta: Metadata) 
 }
 
 
-async fn do_static_deployment(docker: Docker, meta: Metadata) {
+async fn build_static(docker: &Docker, meta: &Metadata) -> Result<(), String> {
+    let meta = meta.clone();
     let polling_id = meta.poll_id();
+    let name = meta.chall_name().clone();
 
-    if let Err(failed_files) = deploy_static_files(&docker, meta.chall_name().as_str()).await {
-        error!("Failed to deploy static files {:?} for {} ({})", failed_files, meta.chall_name(), polling_id);
-        if fail_deployment(polling_id, DeployProcessErr::FileUpload(failed_files).to_string()).is_err() {
+    if let Err(build_err) = build_challenge(docker, &name, None, polling_id).await {
+        error!("Failed to build static file container for `{name}` ({polling_id}) with err {build_err:?}");
+        if fail_deployment(polling_id, build_err.to_string()).is_err() {
             error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
         }
-        send_failure_message(&meta, "Deploy Static Files").await;
-        return;
+        send_failure_message(&meta, "Build Static Container").await;
+        return Err(build_err.to_string());
+    }
+    if !advance_with_fail_log(polling_id) { return Err("Failed to advance status to pushing".to_string()); }
+
+
+    if let Err(push_err) = push_challenge(docker, &name, None, polling_id).await {
+        error!("Failed to push static file container for `{name}` ({polling_id}) with err {push_err:?}");
+        if fail_deployment(polling_id, push_err.to_string()).is_err() {
+            error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+        }
+        send_failure_message(&meta, "Push Static Container").await;
+        return Err(push_err.to_string());
     }
 
-    warn!("No deploy section found in challenge yaml for {} ({})", meta.chall_name(), polling_id);
-    // TODO --> Kinda hacky passing in empty slice, fix later probably (please)
-    if succeed_deployment(polling_id, &[]).is_err() {
-        error!("`succeed_deployment` failed to mark polling id {polling_id} as succeeded");
-    }
-    
-    match send_deployment_success(&meta, None).await {
-        Ok(_) => info!("Successfully sent deployment success message for {} ({})", meta.chall_name(), polling_id),
-        Err(e) => error!("Failed to send deployment success message for {} ({}): {e:?}", meta.chall_name(), polling_id),
-    };
+    Ok(())
 }
 
 async fn deploy_target(
@@ -214,19 +209,42 @@ async fn deploy_target(
         }
     };
     
-    // FIXME --> This might break if there are two different deployed containers that have a weird container/image name --> fix will most likely include server type possibly??
-    if let Err(failed_files) = deploy_static_files(docker, meta.chall_name().as_str()).await {
-        error!("Failed to deploy static files {:?} for {} ({})", failed_files, meta.chall_name(), polling_id);
-        if fail_deployment(polling_id, DeployProcessErr::FileUpload(failed_files).to_string()).is_err() {
-            error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
-        }
-        send_failure_message(&meta, "Deploy Static Files").await;
-        return false;
-    }
+    // // FIXME --> This might break if there are two different deployed containers that have a weird container/image name --> fix will most likely include server type possibly??
+    // if let Err(failed_files) = deploy_static_files(docker, meta.chall_name().as_str()).await {
+    //     error!("Failed to deploy static files {:?} for {} ({})", failed_files, meta.chall_name(), polling_id);
+    //     if fail_deployment(polling_id, DeployProcessErr::FileUpload(failed_files).to_string()).is_err() {
+    //         error!("`fail_deployment` failed to mark polling id {polling_id} as errored");
+    //     }
+    //     send_failure_message(&meta, "Deploy Static Files").await;
+    //     return false;
+    // }
 
     deployed_servers.push((target_type, ports));
 
     true
+}
+
+
+async fn quick_fail_deployment_with_logs(
+    polling_id: PollingId,
+    metadata: &Metadata,
+    failure_message: impl ToString,
+    err: impl ToString,
+) -> bool {
+    let mut had_errors = false;
+    if let Err(id) = fail_deployment(polling_id, failure_message.to_string()) {
+        error!("Failed to mark deployment as failed for id {id}");
+        had_errors = true;
+    }
+    match send_deployment_failure(&metadata, err.to_string()).await {
+        Ok(_) => info!("Successfully sent deployment failure message for {} ({})", metadata.chall_name(), polling_id),
+        Err(e) => {
+            error!("Failed to send deployment failure message for {} ({}): {e:?}", metadata.chall_name(), polling_id);
+            had_errors = true;
+        },
+    }
+
+    had_errors
 }
 
 /// Registers a new deployment with the given polling id provided in `meta`
@@ -257,31 +275,76 @@ pub fn spawn_deploy_req(docker: Docker, client: Client, meta: Metadata) -> Resul
         let meta = spawn_meta;
 
         let Some(chall_yaml) = handle_yaml_get(&meta).await else { return };
-        
-        let Some(deploy_options) = chall_yaml.deploy() else {
-            do_static_deployment(docker, meta).await;
-            return;
+
+        let deployed_servers = if let Some(deploy_options) = chall_yaml.deploy() {
+            // DOCKER CHALLENGES BUILD STARTING FROM HERE, STATIC CHALLS ALREADY RETURNED
+            // to build multiple things iterate over chall.yaml with deploy fields and then you can take the path they say to build and build that path, return the links as a tuple with the type of server built and then from tehre that makes it easier to display and you dont need to rework everything
+
+            let collected = deploy_options.clone()
+                .into_iter()
+                .collect::<Vec<(DeployTarget, DeployTargetType)>>();
+
+            let mut deployed_servers : Vec<(DeployTargetType, Vec<i32>)> = Vec::new();
+            for (target, target_type) in collected {
+                if !deploy_target(&docker, &client, target, target_type, &meta, &mut deployed_servers).await {
+                    error!("Failed to deploy servers for {} ({})", meta.chall_name(), polling_id);
+                    quick_fail_deployment_with_logs(
+                        polling_id,
+                        &meta,
+                        "Failed to deploy servers",
+                        "Issue with deploying k8s servers, see logs.",
+                    ).await;
+                    return;
+                }
+            }
+
+            info!("Deployed servers: {:?}", deployed_servers);
+
+            deployed_servers
+        } else {
+            info!("No deploy options found for {} ({})", meta.chall_name(), polling_id);
+            vec![]
         };
 
-        // DOCKER CHALLENGES BUILD STARTING FROM HERE, STATIC CHALLS ALREADY RETURNED
-        // to build multiple things iterate over chall.yaml with deploy fields and then you can take the path they say to build and build that path, return the links as a tuple with the type of server built and then from tehre that makes it easier to display and you dont need to rework everything
+        let port_list: Vec<_> = deployed_servers.iter().map(|(_, ports)| ports).flatten().copied().collect();
 
-        let collected = deploy_options.clone()
-            .into_iter()
-            .collect::<Vec<(DeployTarget, DeployTargetType)>>();
 
-        let mut deployed_servers : Vec<(DeployTargetType, Vec<i32>)> = Vec::new();
-        for (target, target_type) in collected {
-            if !deploy_target(&docker, &client, target, target_type, &meta, &mut deployed_servers).await {
-                if let Err(id) = fail_deployment(polling_id, "Failed to deploy challenge".to_string()) {
-                    error!("Failed to mark deployment as failed for id {id}");
-                }
+        let needs_static_builder = 'needs_static_builder_result: {
+            let Some(mut file_iter) = chall_yaml.file_iter() else {
+                info!("No files to deploy for {} ({})", meta.chall_name(), polling_id);
+                break 'needs_static_builder_result false;
+            };
+
+            file_iter.any(|file| {
+                file.container() == Some(yaml::files::structs::ContainerType::Static)
+            })
+        };
+
+        if needs_static_builder {
+            if let Err(e) = build_static(&docker, &meta).await {
+                error!("Failed to build static file container for {} ({}): {e}", meta.chall_name(), polling_id);
+                quick_fail_deployment_with_logs(
+                    polling_id,
+                    &meta,
+                    format!("Failed to static file container:\n{e:?}"),
+                    "Issue with deploying k8s servers, see logs.",
+                ).await;
                 return;
             }
         }
 
-        let port_list: Vec<_> = deployed_servers.iter().map(|(_, ports)| ports).flatten().copied().collect();
-
+        if let Err(e) = deploy_static_files(&docker, meta.chall_name().as_str()).await {
+            error!("Failed to deploy static files for {} ({}): {e:?}", meta.chall_name(), polling_id);
+            quick_fail_deployment_with_logs(
+                polling_id,
+                &meta,
+                "Failed to deploy static files",
+                "Issue with deploying static files, see logs.",
+            ).await;
+            return;
+        }
+        info!("Successfully deployed static files for {} ({})", meta.chall_name(), polling_id);
+        
         match succeed_deployment(polling_id, &port_list) {
             Ok(_) => info!("Successfully marked deployment as succeeded for {} ({})", meta.chall_name(), polling_id),
             Err(e) => error!("Failed to mark deployment as succeeded for {} ({}): {e:?}", meta.chall_name(), polling_id),
